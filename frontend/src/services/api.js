@@ -1,8 +1,26 @@
 import axios from 'axios';
 
-// Use Vite's /api proxy (see vite.config.js → server.proxy)
-// This routes all /api requests through Vite to http://localhost:8000
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+/**
+ * Dynamically resolves the API base URL.
+ * Priority:
+ * 1. import.meta.env.VITE_API_URL or VITE_BACKEND_URL if explicitly defined
+ * 2. In browser environments: '/api' (routes through Vite proxy in dev, or same-origin / reverse proxy in prod)
+ * 3. Fallback: 'http://127.0.0.1:8000/api'
+ */
+export const getApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+    const trimmed = envUrl.trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
+  // In browser, relative '/api' avoids CORS issues and works across all devices on LAN & proxies
+  if (typeof window !== 'undefined') {
+    return '/api';
+  }
+  return 'http://127.0.0.1:8000/api';
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -11,6 +29,21 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Response interceptor for clear diagnostics
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response) {
+      console.warn(`[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} returned ${error.response.status}:`, error.response.data);
+    } else if (error.request) {
+      console.error(`[API Network Error] Could not reach backend at ${api.defaults.baseURL || ''}${error.config?.url || ''}. Check backend connectivity or VITE_API_URL configuration.`);
+    } else {
+      console.error('[API Setup Error]', error.message);
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Health check
 export const checkHealth = async () => {
@@ -28,7 +61,7 @@ export const predictSingleText = async (payload) => {
 export const uploadBulkCSV = async (formData, onUploadProgress) => {
   const response = await api.post('/bulk-analysis', formData, {
     headers: {
-      'Content-Type': 'multipart/form-data',
+      'Content-Type': undefined, // Let Axios/browser automatically set multipart boundary
     },
     onUploadProgress,
   });

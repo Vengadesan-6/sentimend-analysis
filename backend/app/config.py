@@ -1,8 +1,12 @@
 import os
-from typing import List
+import json
+from typing import List, Union
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(extra="ignore", env_file=".env")
+
     PROJECT_NAME: str = "Sentix AI — Sentiment Intelligence Platform"
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api"
@@ -23,16 +27,28 @@ class Settings(BaseSettings):
     BERT_MODEL_NAME: str = os.getenv("BERT_MODEL_NAME", "nlptown/bert-base-multilingual-uncased-sentiment")
     
     # CORS
-    CORS_ORIGINS: List[str] = [
+    CORS_ORIGINS: Union[str, List[str]] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
         "*"
     ]
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    def get_cors_origins(self) -> List[str]:
+        raw = os.getenv("CORS_ORIGINS") or self.CORS_ORIGINS
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, str):
+            raw = raw.strip()
+            if raw.startswith("[") and raw.endswith("]"):
+                try:
+                    return json.loads(raw)
+                except Exception:
+                    pass
+            return [o.strip() for o in raw.split(",") if o.strip()]
+        return ["*"]
 
 settings = Settings()

@@ -47,20 +47,14 @@ app = FastAPI(
 )
 
 # CORS Configuration
+cors_origins = settings.get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "*"
-    ],
-    allow_credentials=False,  # Must be False when allow_origins contains "*"
+    allow_origins=cors_origins if cors_origins else ["*"],
+    allow_credentials=True if ("*" not in cors_origins and bool(cors_origins)) else False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Custom Middleware
