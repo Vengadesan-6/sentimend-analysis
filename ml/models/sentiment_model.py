@@ -94,14 +94,26 @@ class SentimentTransformerEngine:
             probs = F.softmax(logits, dim=-1).cpu().numpy()
 
             for idx, prob_array in enumerate(probs):
-                # Calculate class breakdown
-                class_probs = {}
+                # Calculate class breakdown by summing probability mass across fine-grained labels
+                class_probs = {"Positive": 0.0, "Neutral": 0.0, "Negative": 0.0}
                 for class_idx, p in enumerate(prob_array):
                     raw_label = self.id2label.get(class_idx, f"LABEL_{class_idx}")
                     norm_label = self._normalize_sentiment(raw_label)
-                    class_probs[norm_label] = max(class_probs.get(norm_label, 0.0), float(p))
+                    class_probs[norm_label] = class_probs.get(norm_label, 0.0) + float(p)
 
-                # Standardize probabilities across 3 classes
+                # For binary models (e.g. SST-2 without a native neutral class), calibrate neutral margin
+                if len(self.id2label) == 2 and class_probs["Neutral"] == 0.0:
+                    pos_raw = class_probs.get("Positive", 0.0)
+                    neg_raw = class_probs.get("Negative", 0.0)
+                    margin = abs(pos_raw - neg_raw)
+                    # When polarity is ambiguous (margin < 0.45), distribute mass into Neutral
+                    if margin < 0.45:
+                        neutral_mass = (0.45 - margin) / 0.45 * 0.75
+                        class_probs["Neutral"] = neutral_mass
+                        class_probs["Positive"] = pos_raw * (1.0 - neutral_mass)
+                        class_probs["Negative"] = neg_raw * (1.0 - neutral_mass)
+
+                # Standardize probabilities across 3 canonical classes
                 pos_p = class_probs.get("Positive", 0.0)
                 neg_p = class_probs.get("Negative", 0.0)
                 neu_p = class_probs.get("Neutral", 0.0)
