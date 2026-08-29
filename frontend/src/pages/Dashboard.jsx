@@ -72,9 +72,25 @@ export default function Dashboard() {
       if (sentRes.data) setSentimentData(sentRes.data);
       if (emoRes.data?.emotions) setEmotionData(emoRes.data.emotions);
       if (aspRes.data?.aspects) setAspectData(aspRes.data.aspects);
-      if (predRes.data?.items) setRecentPredictions(predRes.data.items);
+
+      if (predRes.data?.items && predRes.data.items.length > 0) {
+        setRecentPredictions(predRes.data.items);
+      } else {
+        try {
+          const cached = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
+          if (cached.length > 0) {
+            setRecentPredictions(cached.slice(0, 6));
+          }
+        } catch (e) {}
+      }
     } catch (err) {
       console.error('Failed to load dashboard telemetry:', err);
+      try {
+        const cached = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
+        if (cached.length > 0) {
+          setRecentPredictions(cached.slice(0, 6));
+        }
+      } catch (e) {}
     } finally {
       setLoading(false);
     }

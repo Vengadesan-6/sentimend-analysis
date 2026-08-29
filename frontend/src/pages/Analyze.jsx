@@ -13,6 +13,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { predictSingleText } from '../services/api';
+import { analyzeText } from '../services/sentimentService';
 import SentimentBadge from '../components/SentimentBadge';
 import EmotionBadge from '../components/EmotionBadge';
 import ExplainabilityTokens from '../components/ExplainabilityTokens';
@@ -53,6 +54,26 @@ export default function Analyze() {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState('insights'); // 'insights' | 'json'
 
+  const syncToLocalHistory = (data) => {
+    try {
+      const cached = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
+      const newItem = {
+        id: data.id || 'pred_' + Date.now(),
+        text: data.text,
+        sentiment: data.sentiment ? data.sentiment.charAt(0).toUpperCase() + data.sentiment.slice(1).toLowerCase() : 'Neutral',
+        confidence: data.confidence || 0.9,
+        probabilities: data.probabilities || {},
+        emotion: data.emotion || 'Neutral',
+        aspects: data.aspects || [],
+        explanation: data.explanation || null,
+        model_name: data.model_name || selectedModel,
+        processing_time_ms: data.processing_time_ms || 25.0,
+        created_at: data.created_at || new Date().toISOString()
+      };
+      localStorage.setItem('sentix_predictions_history', JSON.stringify([newItem, ...cached.filter(c => c.id !== newItem.id)].slice(0, 50)));
+    } catch (e) {}
+  };
+
   const handleAnalyze = async (e) => {
     if (e) e.preventDefault();
     if (!text.trim()) return;
@@ -67,14 +88,40 @@ export default function Analyze() {
         include_xai: includeXai
       });
 
-      if (response.success && response.data) {
+      if (response && response.success && response.data) {
         setResult(response.data);
+        syncToLocalHistory(response.data);
       } else {
-        setError(response.message || 'Failed to analyze text.');
+        throw new Error(response?.message || 'Inference returned empty response');
       }
     } catch (err) {
-      console.error('Inference error:', err);
-      setError(err.response?.data?.detail || err.message || 'Server inference failed.');
+      console.warn('Backend predict API unreachable or degraded, using local transformer engine:', err.message);
+      try {
+        const localRes = await analyzeText(text.trim(), selectedModel, includeXai);
+        const formatted = {
+          id: 'local_' + Date.now(),
+          text: text.trim(),
+          sentiment: localRes.sentiment ? localRes.sentiment.charAt(0).toUpperCase() + localRes.sentiment.slice(1) : 'Neutral',
+          confidence: localRes.confidence,
+          probabilities: {
+            Positive: localRes.probabilities?.positive || 0,
+            Neutral: localRes.probabilities?.neutral || 0,
+            Negative: localRes.probabilities?.negative || 0,
+          },
+          emotion: localRes.emotion,
+          emotion_probabilities: localRes.emotion_probabilities,
+          aspects: localRes.aspects,
+          explanation: localRes.explanation,
+          model_name: localRes.model_full_name || selectedModel,
+          processing_time_ms: localRes.processing_time_ms,
+          created_at: new Date().toISOString()
+        };
+        setResult(formatted);
+        syncToLocalHistory(formatted);
+      } catch (localErr) {
+        console.error('Inference error:', localErr);
+        setError(localErr.message || 'Server inference failed.');
+      }
     } finally {
       setLoading(false);
     }

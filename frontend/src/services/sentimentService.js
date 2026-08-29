@@ -20,7 +20,9 @@ export async function analyzeText(text, modelName = 'cardiffnlp/twitter-roberta-
 
     if (response.data && response.data.success && response.data.data) {
       const d = response.data.data;
-      return {
+      const parsedRes = {
+        id: d.id,
+        text: d.text || text,
         sentiment: d.sentiment.toLowerCase(),
         confidence: d.confidence,
         probabilities: {
@@ -39,8 +41,29 @@ export async function analyzeText(text, modelName = 'cardiffnlp/twitter-roberta-
         model: d.model_name ? d.model_name.split('/').pop() : "Transformer",
         model_full_name: d.model_name,
         processing_time_ms: d.processing_time_ms || Math.round(performance.now() - startTime),
+        created_at: d.created_at || new Date().toISOString(),
         is_live_backend: true,
       };
+
+      try {
+        const cached = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
+        const itemToCache = {
+          id: parsedRes.id || 'pred_' + Date.now(),
+          text: text,
+          sentiment: d.sentiment.charAt(0).toUpperCase() + d.sentiment.slice(1).toLowerCase(),
+          confidence: d.confidence,
+          probabilities: d.probabilities || {},
+          emotion: d.emotion,
+          aspects: d.aspects || [],
+          explanation: d.explanation,
+          model_name: d.model_name || modelName,
+          processing_time_ms: parsedRes.processing_time_ms,
+          created_at: parsedRes.created_at
+        };
+        localStorage.setItem('sentix_predictions_history', JSON.stringify([itemToCache, ...cached.filter(c => c.id !== itemToCache.id)].slice(0, 50)));
+      } catch (e) {}
+
+      return parsedRes;
     }
   } catch (err) {
     console.warn("Backend API unavailable or error occurred, using client-side model engine:", err.message);
