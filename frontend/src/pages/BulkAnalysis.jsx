@@ -13,7 +13,7 @@ import {
   Frown,
   Meh
 } from 'lucide-react';
-import { uploadBulkCSV } from '../services/api';
+import api, { uploadBulkCSV } from '../services/api';
 import SentimentBadge from '../components/SentimentBadge';
 import EmotionBadge from '../components/EmotionBadge';
 
@@ -273,7 +273,7 @@ export default function BulkAnalysis() {
             </div>
 
             <a
-              href={`/api/bulk-analysis/${result.dataset_id}/download`}
+              href={`${api.defaults.baseURL || '/api'}/bulk-analysis/${result.dataset_id}/download`}
               download
               className="px-5 py-2.5 rounded-full bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold shadow-sm transition-all flex items-center gap-2"
             >
