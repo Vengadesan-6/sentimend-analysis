@@ -24,9 +24,9 @@ async def get_predictions(
 
     filter_query = {}
     if sentiment and sentiment.lower() != "all":
-        filter_query["sentiment"] = sentiment.capitalize()
+        filter_query["sentiment"] = {"$regex": f"^{sentiment}$", "$options": "i"}
     if emotion and emotion.lower() != "all":
-        filter_query["emotion"] = emotion.capitalize()
+        filter_query["emotion"] = {"$regex": f"^{emotion}$", "$options": "i"}
     if search:
         filter_query["text"] = {"$regex": search, "$options": "i"}
 
@@ -39,18 +39,26 @@ async def get_predictions(
 
     results = []
     for d in docs:
+        created_val = d.get("created_at")
+        if hasattr(created_val, "isoformat"):
+            created_str = created_val.isoformat()
+        elif created_val:
+            created_str = str(created_val)
+        else:
+            created_str = ""
+
         results.append({
             "id": str(d["_id"]),
-            "text": d.get("text", ""),
-            "sentiment": d.get("sentiment", "Neutral"),
-            "confidence": d.get("confidence", 0.0),
-            "probabilities": d.get("probabilities", {}),
-            "emotion": d.get("emotion", "Neutral"),
-            "aspects": d.get("aspects", []),
+            "text": d.get("text") or "",
+            "sentiment": (d.get("sentiment") or "Neutral").capitalize(),
+            "confidence": float(d.get("confidence") or 0.0),
+            "probabilities": d.get("probabilities") or {},
+            "emotion": (d.get("emotion") or "Neutral").capitalize(),
+            "aspects": d.get("aspects") or [],
             "explanation": d.get("explanation"),
-            "model_name": d.get("model_name", "RoBERTa"),
-            "processing_time_ms": d.get("processing_time_ms", 0.0),
-            "created_at": d.get("created_at").isoformat() if hasattr(d.get("created_at"), "isoformat") else str(d.get("created_at", ""))
+            "model_name": d.get("model_name") or "cardiffnlp/twitter-roberta-base-sentiment-latest",
+            "processing_time_ms": float(d.get("processing_time_ms") or 0.0),
+            "created_at": created_str
         })
 
     return APIResponse(

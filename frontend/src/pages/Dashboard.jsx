@@ -399,7 +399,7 @@ export default function Dashboard() {
                       <EmotionBadge emotion={pred.emotion} size="sm" />
                     </td>
                     <td className="py-3.5 px-4 font-mono text-slate-400 text-[11px]">
-                      {pred.model_name.split('/').pop()}
+                      {pred.model_name ? pred.model_name.split('/').pop() : 'RoBERTa'}
                     </td>
                     <td className="py-3.5 px-4 font-mono text-slate-400 text-[11px]">
                       {pred.processing_time_ms}ms

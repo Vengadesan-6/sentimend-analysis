@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 import pandas as pd
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
 
 from backend.app.schemas import (
@@ -82,9 +82,10 @@ async def predict_single_text(payload: SinglePredictionRequest):
     )
 
 @router.post("/bulk-analysis", response_model=APIResponse[BulkAnalysisSummary])
+@router.post("/predict/bulk", response_model=APIResponse[BulkAnalysisSummary])
 async def bulk_csv_analysis(
     file: UploadFile = File(...),
-    model_name: Optional[str] = None
+    model_name: Optional[str] = Form(None)
 ):
     """
     Handles CSV file upload, validates 'text' column, executes true batched inference,
@@ -197,6 +198,7 @@ async def bulk_csv_analysis(
     )
 
 @router.get("/bulk-analysis/{dataset_id}/download")
+@router.get("/predict/bulk/{dataset_id}/download")
 async def download_bulk_results(dataset_id: str):
     """
     Streams CSV download of analyzed bulk results with sentiment, emotion, and confidence.

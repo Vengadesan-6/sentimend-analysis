@@ -29,11 +29,13 @@ export default function History() {
   const [sentimentFilter, setSentimentFilter] = useState('all');
   const [emotionFilter, setEmotionFilter] = useState('all');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [inspectItem, setInspectItem] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
   const fetchHistory = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await getPredictions({
         page,
@@ -45,13 +47,16 @@ export default function History() {
         order: 'desc'
       });
 
-      if (res.data) {
+      if (res && res.data) {
         setPredictions(res.data.items || []);
         setTotal(res.data.total || 0);
         setTotalPages(res.data.total_pages || 1);
+      } else {
+        setPredictions([]);
       }
     } catch (err) {
       console.error('Failed to fetch prediction history:', err);
+      setError(err.response?.data?.detail || err.message || 'Failed to connect to backend history database.');
     } finally {
       setLoading(false);
     }
@@ -167,6 +172,22 @@ export default function History() {
         </div>
       </div>
 
+      {/* Error Alert */}
+      {error && (
+        <div className="p-4 rounded-2xl bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626] text-xs flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={fetchHistory}
+            className="px-3 py-1 rounded-lg bg-[#DC2626] text-white font-bold hover:bg-[#B91C1C] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Predictions Table */}
       <div className="editorial-card rounded-3xl shadow-floating overflow-hidden">
         <div className="overflow-x-auto">
@@ -195,7 +216,7 @@ export default function History() {
                       <EmotionBadge emotion={p.emotion} size="sm" />
                     </td>
                     <td className="py-3.5 px-4 font-mono text-[#7C3AED] text-[11px]">
-                      {p.model_name.split('/').pop()}
+                      {p.model_name ? p.model_name.split('/').pop() : 'RoBERTa'}
                     </td>
                     <td className="py-3.5 px-4 font-mono text-[#888888] text-[11px]">
                       {p.created_at ? new Date(p.created_at).toLocaleString() : 'N/A'}
@@ -224,7 +245,7 @@ export default function History() {
               ) : (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-[#888888] text-xs">
-                    {loading ? 'Fetching audit records from MongoDB...' : 'No historical predictions found.'}
+                    {loading ? 'Fetching audit records from MongoDB...' : error ? 'Error loading history records.' : 'No historical predictions found.'}
                   </td>
                 </tr>
               )}
