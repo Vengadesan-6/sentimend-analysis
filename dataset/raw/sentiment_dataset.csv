@@ -1,0 +1,56 @@
+text,label,emotion,aspects
+"The AI model's response time is exceptionally fast, and the dashboard UI is simply stunning!",Positive,joy,"performance,ui"
+I absolutely love this new update! The sentiment insights and accuracy are second to none.,Positive,joy,"accuracy,features"
+Outstanding battery life and the OLED display is crystal clear. Worth every penny.,Positive,joy,"battery,display"
+Customer support solved my issue within minutes. Highly impressed with their professionalism.,Positive,joy,"support,service"
+The noise cancellation on these headphones is miraculous on noisy flights.,Positive,surprise,noise_cancellation
+Exceptional build quality and sleek design. Fits comfortably in one hand.,Positive,joy,"design,ergonomics"
+Great value for money. Easily outperforms competing products that cost twice as much.,Positive,joy,"pricing,value"
+Seamless integration with our existing MongoDB cluster and effortless setup.,Positive,joy,"integration,setup"
+The audio quality is rich with punchy bass and crisp highs. A true masterpiece.,Positive,joy,sound_quality
+Lightning fast shipping and the packaging was immaculate. Highly recommend!,Positive,joy,"delivery,packaging"
+A triumphant leap forward in natural language understanding. Incredible work!,Positive,joy,capabilities
+Super intuitive navigation and the dark mode aesthetics look gorgeous.,Positive,joy,"ui,theme"
+I was pleasantly surprised by how well the aspect extraction works on messy sentences.,Positive,surprise,absa_accuracy
+Very reliable platform with 99.9% uptime during our entire pilot phase.,Positive,joy,reliability
+The camera captures breathtaking low-light photos with zero noise.,Positive,joy,"camera,low_light"
+Best software purchase our team made this year. Productivity skyrocketed!,Positive,joy,"productivity,software"
+The battery charges from 0 to 80% in under twenty minutes. Unbelievable speed!,Positive,surprise,charging_speed
+"Smooth animations, zero latency, and top-tier developer documentation.",Positive,joy,"docs,performance"
+Such a delightful user experience! Everything feels thought out and polished.,Positive,joy,ux
+The multilingual sentiment accuracy exceeded all our initial expectations.,Positive,surprise,accuracy
+Terrible customer service. Waited 45 minutes on hold just to get disconnected.,Negative,anger,"support,wait_time"
+The app crashes constantly every time I try to upload a bulk CSV file.,Negative,anger,"stability,bulk_upload"
+Very disappointed with the build quality. The hinge creaks and feels flimsy.,Negative,sadness,"build_quality,durability"
+Battery drains completely within 3 hours of moderate usage. Completely unacceptable.,Negative,anger,battery_life
+Overpriced and underdelivered. Half the advertised features are missing.,Negative,disgust,"price,features"
+The latest firmware update completely broke Bluetooth connectivity.,Negative,anger,"connectivity,bluetooth"
+Horrible audio lag when watching videos. Makes dialogue completely out of sync.,Negative,sadness,"audio_sync,latency"
+The touchscreen is unresponsive around the corners. Regret buying this.,Negative,sadness,"touchscreen,hardware"
+Misleading product descriptions and poor packaging. Arrived with scratches.,Negative,anger,"packaging,condition"
+Slow inference latency on larger batches. Server frequently times out.,Negative,fear,"latency,server"
+"The UI is cluttered, confusing, and full of intrusive pop-ups.",Negative,disgust,"ui,ads"
+Extremely difficult to cancel subscription. Hidden charges on my billing statement.,Negative,anger,"billing,cancellation"
+I am terrified this system will fail during peak enterprise traffic.,Negative,fear,"reliability,scaling"
+The food arrived cold and soggy after two hours of waiting. Never ordering again.,Negative,disgust,"food_quality,delivery"
+Zero documentation provided for custom dataset training. Waste of time.,Negative,anger,documentation
+The camera lens scratches far too easily. Total design defect.,Negative,sadness,"camera_lens,durability"
+Constant authorization failures and cryptic error messages.,Negative,anger,"auth,errors"
+Lacks basic export capabilities and CSV formatting is broken.,Negative,sadness,"export,csv"
+The fan noise is so loud it sounds like a jet engine taking off.,Negative,anger,"noise_level,cooling"
+Unhelpful generic responses from the bot instead of actual assistance.,Negative,sadness,bot_support
+The package was delivered on Tuesday afternoon via FedEx standard delivery.,Neutral,neutral,delivery_time
+The smartphone weighs 187 grams and has a 6.7-inch AMOLED screen.,Neutral,neutral,"weight,screen_size"
+We conducted testing across three different transformer architectures.,Neutral,neutral,methodology
+The system operates on port 8000 by default and uses MongoDB for persistence.,Neutral,neutral,"architecture,config"
+The meeting has been rescheduled to tomorrow morning at 10:00 AM.,Neutral,neutral,schedule
+"The product comes in three colors: Space Gray, Silver, and Midnight Blue.",Neutral,neutral,color_options
+CSV files must contain a header row with a designated text column.,Neutral,neutral,format_spec
+The device includes two USB-C ports and a 3.5mm headphone jack.,Neutral,neutral,"connectivity,ports"
+The update was released on March 15th with version tag 2.4.1.,Neutral,neutral,release_date
+"The model was trained on 50,000 text samples over 3 epochs.",Neutral,neutral,training_specs
+"The package contains the user manual, power adapter, and warranty card.",Neutral,neutral,accessories
+Evaluation metrics were computed using standard scikit-learn functions.,Neutral,neutral,evaluation
+The platform supports inference on both CPU and GPU environments.,Neutral,neutral,hardware_support
+Transactions are processed through standard ACH transfer protocols.,Neutral,neutral,payment_protocol
+The conference is held annually in San Francisco during late autumn.,Neutral,neutral,event_location

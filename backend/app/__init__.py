@@ -1,0 +1,3 @@
+"""
+Sentix AI Backend Application
+"""

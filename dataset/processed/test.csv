@@ -1,0 +1,10 @@
+text,label,emotion,aspects
+The meeting has been rescheduled to tomorrow morning at 10:00 AM.,Neutral,neutral,schedule
+Zero documentation provided for custom dataset training. Waste of time.,Negative,anger,documentation
+Evaluation metrics were computed using standard scikit-learn functions.,Neutral,neutral,evaluation
+The smartphone weighs 187 grams and has a 6.7-inch AMOLED screen.,Neutral,neutral,"weight,screen_size"
+Such a delightful user experience! Everything feels thought out and polished.,Positive,joy,ux
+Super intuitive navigation and the dark mode aesthetics look gorgeous.,Positive,joy,"ui,theme"
+The camera captures breathtaking low-light photos with zero noise.,Positive,joy,"camera,low_light"
+"The UI is cluttered, confusing, and full of intrusive pop-ups.",Negative,disgust,"ui,ads"
+Unhelpful generic responses from the bot instead of actual assistance.,Negative,sadness,bot_support

@@ -1,0 +1,10 @@
+text,label,emotion,aspects
+The system operates on port 800 by default and uses MongoDB for persistence.,Neutral,neutral,"architecture,config"
+Battery drains completely within 3 hours of moderate usage. Completely unacceptable.,Negative,anger,battery_life
+The latest firmware update completely broke Bluetooth connectivity.,Negative,anger,"connectivity,bluetooth"
+I am terrified this system will fail during peak enterprise traffic.,Negative,fear,"reliability,scaling"
+Customer support solved my issue within minutes. Highly impressed with their professionalism.,Positive,joy,"support,service"
+Best software purchase our team made this year. Productivity skyrocketed!,Positive,joy,"productivity,software"
+The battery charges from 0 to 80% in under twenty minutes. Unbelievable speed!,Positive,surprise,charging_speed
+We conducted testing across three different transformer architectures.,Neutral,neutral,methodology
+The update was released on March 15th with version tag 2.4.1.,Neutral,neutral,release_date

@@ -1,0 +1,15 @@
+{
+  "name": "sentiment-intelligence-platform-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SentimentAI - Sentiment Analysis Using Transformer Models",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "frontend": "npm --prefix frontend run dev",
+    "backend": "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload",
+    "test": "pytest backend/tests -v"
+  },
+  "keywords": ["sentiment-analysis", "transformer", "fastapi", "react", "roberta", "bert", "distilbert"]
+}
