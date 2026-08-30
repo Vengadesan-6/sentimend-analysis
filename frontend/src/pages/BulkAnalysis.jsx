@@ -85,112 +85,6 @@ export default function BulkAnalysis() {
     setResult(null);
   };
 
-  const analyzeBatchClientSide = async (csvText) => {
-    const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    if (lines.length <= 1) {
-      throw new Error('CSV file must contain a header and at least one row.');
-    }
-
-    // Parse header to find text column
-    const headerCols = lines[0].split(',').map(c => c.replace(/^["']|["']$/g, '').trim().toLowerCase());
-    let textIdx = headerCols.findIndex(c => ['text', 'review', 'comment', 'sentence', 'feedback', 'content', 'tweet'].includes(c));
-    if (textIdx === -1) textIdx = 0; // Default to first column
-
-    const sampleResults = [];
-    const allResults = [];
-    let posCount = 0;
-    let negCount = 0;
-    let neuCount = 0;
-    let totalConf = 0;
-
-    const posWords = ['excellent', 'great', 'love', 'amazing', 'perfect', 'helpful', 'fast', 'good', 'outstanding', 'miraculous', 'superb', 'best', 'stunning', 'seamless', 'breathtaking'];
-    const negWords = ['terrible', 'bad', 'worst', 'horrible', 'poor', 'hate', 'disappointed', 'awful', 'crashes', 'slow', 'broken', 'defective', 'useless', 'unresponsive', 'regret', 'unacceptable', 'misleading', 'scratches'];
-
-    const dataRows = lines.slice(1);
-    const totalRecords = dataRows.length;
-
-    for (let i = 0; i < totalRecords; i++) {
-      const row = dataRows[i];
-      // Basic CSV field parser
-      const match = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [row];
-      const rawText = (match[textIdx] || row).replace(/^["']|["']$/g, '').trim();
-      if (!rawText) continue;
-
-      const lower = rawText.toLowerCase();
-      let posHits = posWords.filter(w => lower.includes(w)).length;
-      let negHits = negWords.filter(w => lower.includes(w)).length;
-
-      let sentiment = 'Neutral';
-      let confidence = 0.85;
-      let emotion = 'Neutral';
-
-      if (posHits > negHits) {
-        sentiment = 'Positive';
-        confidence = Math.min(0.98, 0.72 + posHits * 0.08);
-        emotion = 'Joy';
-        posCount++;
-      } else if (negHits > posHits) {
-        sentiment = 'Negative';
-        confidence = Math.min(0.98, 0.70 + negHits * 0.08);
-        emotion = lower.includes('hate') || lower.includes('angry') ? 'Anger' : 'Frustration';
-        negCount++;
-      } else {
-        sentiment = 'Neutral';
-        confidence = 0.80;
-        emotion = 'Neutral';
-        neuCount++;
-      }
-
-      totalConf += confidence;
-      const resItem = {
-        text: rawText,
-        sentiment,
-        confidence: Math.round(confidence * 100) / 100,
-        emotion,
-        model_name: modelName,
-      };
-
-      allResults.push(resItem);
-      if (sampleResults.length < 10) {
-        sampleResults.push(resItem);
-      }
-    }
-
-    const avgConf = totalRecords > 0 ? Math.round((totalConf / totalRecords) * 100) / 100 : 0.85;
-
-    // Cache batch results to local history for audit trail
-    try {
-      const existing = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
-      const newItems = allResults.slice(0, 10).map((r, idx) => ({
-        id: 'batch_' + Date.now() + '_' + idx,
-        text: r.text,
-        sentiment: r.sentiment,
-        confidence: r.confidence,
-        emotion: r.emotion,
-        model_name: modelName,
-        created_at: new Date().toISOString()
-      }));
-      localStorage.setItem('sentix_predictions_history', JSON.stringify([...newItems, ...existing].slice(0, 50)));
-    } catch (e) {
-      // Ignore localStorage quotas
-    }
-
-    return {
-      dataset_id: 'batch_' + Date.now(),
-      filename: file.name,
-      total_records: totalRecords,
-      processed_records: totalRecords,
-      positive_count: posCount,
-      negative_count: negCount,
-      neutral_count: neuCount,
-      avg_confidence: avgConf,
-      processing_time_ms: Math.round(20 + totalRecords * 3.5),
-      sample_results: sampleResults,
-      all_results: allResults,
-      is_client_processed: true,
-    };
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) {
@@ -200,36 +94,30 @@ export default function BulkAnalysis() {
 
     setAnalyzing(true);
     setError(null);
-    setUploadProgress(20);
+    setUploadProgress(15);
 
     const formData = new FormData();
     formData.append('file', file);
-    if (modelName) formData.append('model_name', modelName);
+    if (modelName) {
+      formData.append('model_name', modelName);
+      formData.append('model', modelName);
+    }
 
     try {
       const response = await uploadBulkCSV(formData, (progressEvent) => {
         const percent = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-        setUploadProgress(percent);
+        setUploadProgress(Math.min(95, percent));
       });
 
       if (response && response.success && response.data) {
+        setUploadProgress(100);
         setResult(response.data);
       } else {
         throw new Error(response?.message || 'Server batch inference returned empty');
       }
     } catch (err) {
-      console.warn('Backend batch API unreachable or error, utilizing accelerated client-side batch engine:', err.message);
-      try {
-        setUploadProgress(60);
-        const textContent = await file.text();
-        setUploadProgress(85);
-        const clientResult = await analyzeBatchClientSide(textContent);
-        setUploadProgress(100);
-        setResult(clientResult);
-      } catch (clientErr) {
-        console.error('Client CSV batch processing failed:', clientErr);
-        setError(clientErr.message || 'CSV batch inference failed.');
-      }
+      console.error('Batch inference error:', err);
+      setError(err.response?.data?.message || err.message || 'CSV batch inference failed on backend.');
     } finally {
       setAnalyzing(false);
     }

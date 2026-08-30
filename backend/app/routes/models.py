@@ -34,6 +34,7 @@ async def get_model_performance():
 
     if not models:
         # Default benchmark baseline
+        now_iso = "2026-08-30T00:00:00Z"
         models = [
             {
                 "model_name": "cardiffnlp/twitter-roberta-base-sentiment-latest",
@@ -45,8 +46,11 @@ async def get_model_performance():
                 "macro_f1": 0.939,
                 "inference_time_ms": 28.4,
                 "test_sample_count": 500,
-                "confusion_matrix": [[160, 4, 6], [5, 155, 10], [4, 8, 148]],
-                "evaluated_at": "Benchmark Baseline"
+                "confusion_matrix": {
+                    "labels": ["Positive", "Neutral", "Negative"],
+                    "matrix": [[160, 4, 6], [5, 155, 10], [4, 8, 148]]
+                },
+                "evaluated_at": now_iso
             },
             {
                 "model_name": "distilbert-base-uncased-finetuned-sst-2-english",
@@ -58,8 +62,11 @@ async def get_model_performance():
                 "macro_f1": 0.911,
                 "inference_time_ms": 14.2,
                 "test_sample_count": 500,
-                "confusion_matrix": [[152, 8, 10], [9, 149, 12], [8, 11, 141]],
-                "evaluated_at": "Benchmark Baseline"
+                "confusion_matrix": {
+                    "labels": ["Positive", "Neutral", "Negative"],
+                    "matrix": [[152, 8, 10], [9, 149, 12], [8, 11, 141]]
+                },
+                "evaluated_at": now_iso
             },
             {
                 "model_name": "nlptown/bert-base-multilingual-uncased-sentiment",
@@ -71,8 +78,11 @@ async def get_model_performance():
                 "macro_f1": 0.894,
                 "inference_time_ms": 36.8,
                 "test_sample_count": 500,
-                "confusion_matrix": [[148, 11, 11], [12, 144, 14], [10, 13, 137]],
-                "evaluated_at": "Benchmark Baseline"
+                "confusion_matrix": {
+                    "labels": ["Positive", "Neutral", "Negative"],
+                    "matrix": [[148, 11, 11], [12, 144, 14], [10, 13, 137]]
+                },
+                "evaluated_at": now_iso
             }
         ]
 

@@ -85,43 +85,19 @@ export default function Analyze() {
       const response = await predictSingleText({
         text: text.trim(),
         model_name: selectedModel,
+        model: selectedModel,
         include_xai: includeXai
       });
 
       if (response && response.success && response.data) {
         setResult(response.data);
-        syncToLocalHistory(response.data);
       } else {
         throw new Error(response?.message || 'Inference returned empty response');
       }
     } catch (err) {
-      console.warn('Backend predict API unreachable or degraded, using local transformer engine:', err.message);
-      try {
-        const localRes = await analyzeText(text.trim(), selectedModel, includeXai);
-        const formatted = {
-          id: 'local_' + Date.now(),
-          text: text.trim(),
-          sentiment: localRes.sentiment ? localRes.sentiment.charAt(0).toUpperCase() + localRes.sentiment.slice(1) : 'Neutral',
-          confidence: localRes.confidence,
-          probabilities: {
-            Positive: localRes.probabilities?.positive || 0,
-            Neutral: localRes.probabilities?.neutral || 0,
-            Negative: localRes.probabilities?.negative || 0,
-          },
-          emotion: localRes.emotion,
-          emotion_probabilities: localRes.emotion_probabilities,
-          aspects: localRes.aspects,
-          explanation: localRes.explanation,
-          model_name: localRes.model_full_name || selectedModel,
-          processing_time_ms: localRes.processing_time_ms,
-          created_at: new Date().toISOString()
-        };
-        setResult(formatted);
-        syncToLocalHistory(formatted);
-      } catch (localErr) {
-        console.error('Inference error:', localErr);
-        setError(localErr.message || 'Server inference failed.');
-      }
+      console.error('Inference error:', err);
+      setError(err.response?.data?.message || err.message || 'Server inference failed.');
+      setResult(null);
     } finally {
       setLoading(false);
     }

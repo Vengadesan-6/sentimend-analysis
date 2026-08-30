@@ -16,26 +16,37 @@ class SentimentTransformerEngine:
     """
     _instances: Dict[str, "SentimentTransformerEngine"] = {}
 
+    MODEL_ALIASES = {
+        "roberta": "cardiffnlp/twitter-roberta-base-sentiment-latest",
+        "cardiffnlp/twitter-roberta-base-sentiment-latest": "cardiffnlp/twitter-roberta-base-sentiment-latest",
+        "distilbert": "distilbert-base-uncased-finetuned-sst-2-english",
+        "distilbert-base-uncased-finetuned-sst-2-english": "distilbert-base-uncased-finetuned-sst-2-english",
+        "bert": "nlptown/bert-base-multilingual-uncased-sentiment",
+        "nlptown/bert-base-multilingual-uncased-sentiment": "nlptown/bert-base-multilingual-uncased-sentiment",
+    }
+
     def __init__(self, model_name: str = ml_config.sentiment_model_name):
-        self.model_name = model_name
+        resolved_name = self.MODEL_ALIASES.get(model_name.lower().strip() if model_name else "", model_name or ml_config.sentiment_model_name)
+        self.model_name = resolved_name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f"Initializing SentimentTransformerEngine on device: {self.device} for model: {model_name}")
+        logger.info(f"Initializing SentimentTransformerEngine on device: {self.device} for model: {self.model_name}")
         
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
         self.model.to(self.device)
         self.model.eval()
         
         # Determine model output mapping
         self.id2label = self.model.config.id2label
-        logger.info(f"Model loaded successfully with labels: {self.id2label}")
+        logger.info(f"Model [{self.model_name}] loaded successfully with labels: {self.id2label}")
 
     @classmethod
     def get_instance(cls, model_name: Optional[str] = None) -> "SentimentTransformerEngine":
-        target_model = model_name or ml_config.sentiment_model_name
-        if target_model not in cls._instances:
-            cls._instances[target_model] = cls(target_model)
-        return cls._instances[target_model]
+        raw_name = model_name or ml_config.sentiment_model_name
+        resolved_name = cls.MODEL_ALIASES.get(raw_name.lower().strip() if raw_name else "", raw_name)
+        if resolved_name not in cls._instances:
+            cls._instances[resolved_name] = cls(resolved_name)
+        return cls._instances[resolved_name]
 
     def _normalize_sentiment(self, raw_label: str) -> str:
         """
@@ -94,24 +105,12 @@ class SentimentTransformerEngine:
             probs = F.softmax(logits, dim=-1).cpu().numpy()
 
             for idx, prob_array in enumerate(probs):
-                # Calculate class breakdown by summing probability mass across fine-grained labels
+                # Calculate class breakdown by summing probability mass across mapped labels
                 class_probs = {"Positive": 0.0, "Neutral": 0.0, "Negative": 0.0}
                 for class_idx, p in enumerate(prob_array):
                     raw_label = self.id2label.get(class_idx, f"LABEL_{class_idx}")
                     norm_label = self._normalize_sentiment(raw_label)
                     class_probs[norm_label] = class_probs.get(norm_label, 0.0) + float(p)
-
-                # For binary models (e.g. SST-2 without a native neutral class), calibrate neutral margin
-                if len(self.id2label) == 2 and class_probs["Neutral"] == 0.0:
-                    pos_raw = class_probs.get("Positive", 0.0)
-                    neg_raw = class_probs.get("Negative", 0.0)
-                    margin = abs(pos_raw - neg_raw)
-                    # When polarity is ambiguous (margin < 0.45), distribute mass into Neutral
-                    if margin < 0.45:
-                        neutral_mass = (0.45 - margin) / 0.45 * 0.75
-                        class_probs["Neutral"] = neutral_mass
-                        class_probs["Positive"] = pos_raw * (1.0 - neutral_mass)
-                        class_probs["Negative"] = neg_raw * (1.0 - neutral_mass)
 
                 # Standardize probabilities across 3 canonical classes
                 pos_p = class_probs.get("Positive", 0.0)
@@ -125,9 +124,14 @@ class SentimentTransformerEngine:
                     "Negative": round(neg_p / total, 4)
                 }
 
-                # Top predicted sentiment & confidence
+                # Top predicted sentiment & confidence from actual model probability
                 predicted_sentiment = max(normalized_probs, key=normalized_probs.get)
                 confidence = normalized_probs[predicted_sentiment]
+
+                logger.debug(
+                    f"Inference complete on [{self.model_name}] for text: '{batch_texts[idx][:40]}...' -> "
+                    f"Sentiment: {predicted_sentiment}, Confidence: {confidence}, Probabilities: {normalized_probs}"
+                )
 
                 all_results.append({
                     "text": batch_texts[idx],

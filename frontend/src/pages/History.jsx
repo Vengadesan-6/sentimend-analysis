@@ -13,7 +13,7 @@ import {
   X,
   RefreshCw
 } from 'lucide-react';
-import { getPredictions, deletePrediction } from '../services/api';
+import { getPredictions, deletePrediction, clearPredictions } from '../services/api';
 import SentimentBadge from '../components/SentimentBadge';
 import EmotionBadge from '../components/EmotionBadge';
 import ExplainabilityTokens from '../components/ExplainabilityTokens';
@@ -32,120 +32,7 @@ export default function History() {
   const [error, setError] = useState(null);
   const [inspectItem, setInspectItem] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
-
-  const defaultAuditRecords = [
-    {
-      id: 'audit_rec_1',
-      text: "The AI model's response time is exceptionally fast, and the dashboard UI is simply stunning!",
-      sentiment: 'Positive',
-      confidence: 0.96,
-      probabilities: { Positive: 0.96, Neutral: 0.03, Negative: 0.01 },
-      emotion: 'Joy',
-      aspects: [{ aspect: 'Response Time', sentiment: 'Positive', confidence: 0.95 }, { aspect: 'Dashboard UI', sentiment: 'Positive', confidence: 0.97 }],
-      explanation: {
-        method: "Model-based Gradient Saliency & Attention Attribution",
-        tokens: ["The", "AI", "model's", "response", "time", "is", "exceptionally", "fast,", "and", "the", "dashboard", "UI", "is", "simply", "stunning!"],
-        scores: [0.01, 0.05, 0.02, 0.1, 0.1, 0.02, 0.85, 0.88, 0.01, 0.01, 0.2, 0.2, 0.01, 0.7, 0.95],
-        top_positive_words: ["exceptionally", "fast", "stunning"],
-        top_negative_words: []
-      },
-      model_name: 'cardiffnlp/twitter-roberta-base-sentiment-latest',
-      processing_time_ms: 18.4,
-      created_at: new Date(Date.now() - 3600000).toISOString()
-    },
-    {
-      id: 'audit_rec_2',
-      text: "Terrible customer service. Waited 45 minutes on hold just to get disconnected.",
-      sentiment: 'Negative',
-      confidence: 0.94,
-      probabilities: { Positive: 0.02, Neutral: 0.04, Negative: 0.94 },
-      emotion: 'Anger',
-      aspects: [{ aspect: 'Customer Service', sentiment: 'Negative', confidence: 0.94 }],
-      explanation: {
-        method: "Model-based Gradient Saliency & Attention Attribution",
-        tokens: ["Terrible", "customer", "service.", "Waited", "45", "minutes", "on", "hold", "just", "to", "get", "disconnected."],
-        scores: [-0.94, 0.02, 0.02, -0.2, -0.1, -0.1, 0.0, -0.3, 0.0, 0.0, 0.0, -0.85],
-        top_positive_words: [],
-        top_negative_words: ["terrible", "disconnected"]
-      },
-      model_name: 'cardiffnlp/twitter-roberta-base-sentiment-latest',
-      processing_time_ms: 22.1,
-      created_at: new Date(Date.now() - 7200000).toISOString()
-    },
-    {
-      id: 'audit_rec_3',
-      text: "The smartphone weighs 187 grams and has a 6.7-inch AMOLED display.",
-      sentiment: 'Neutral',
-      confidence: 0.88,
-      probabilities: { Positive: 0.06, Neutral: 0.88, Negative: 0.06 },
-      emotion: 'Neutral',
-      aspects: [{ aspect: 'Display', sentiment: 'Neutral', confidence: 0.88 }],
-      model_name: 'distilbert-base-uncased-finetuned-sst-2-english',
-      processing_time_ms: 12.0,
-      created_at: new Date(Date.now() - 14400000).toISOString()
-    },
-    {
-      id: 'audit_rec_4',
-      text: "The noise cancellation on these headphones is miraculous on noisy flights.",
-      sentiment: 'Positive',
-      confidence: 0.97,
-      probabilities: { Positive: 0.97, Neutral: 0.02, Negative: 0.01 },
-      emotion: 'Joy',
-      aspects: [{ aspect: 'Noise Cancellation', sentiment: 'Positive', confidence: 0.97 }],
-      model_name: 'cardiffnlp/twitter-roberta-base-sentiment-latest',
-      processing_time_ms: 24.5,
-      created_at: new Date(Date.now() - 28800000).toISOString()
-    },
-    {
-      id: 'audit_rec_5',
-      text: "Battery drains completely within 3 hours of moderate usage. Completely unacceptable.",
-      sentiment: 'Negative',
-      confidence: 0.95,
-      probabilities: { Positive: 0.01, Neutral: 0.04, Negative: 0.95 },
-      emotion: 'Anger',
-      aspects: [{ aspect: 'Battery', sentiment: 'Negative', confidence: 0.95 }],
-      model_name: 'nlptown/bert-base-multilingual-uncased-sentiment',
-      processing_time_ms: 31.0,
-      created_at: new Date(Date.now() - 43200000).toISOString()
-    }
-  ];
-
-  const getLocalFilteredRecords = () => {
-    let localData = defaultAuditRecords;
-    try {
-      const cached = localStorage.getItem('sentix_predictions_history');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          localData = [...parsed, ...defaultAuditRecords.filter(d => !parsed.some(p => p.id === d.id))];
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-
-    let filtered = localData;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(item => item.text.toLowerCase().includes(q));
-    }
-    if (sentimentFilter && sentimentFilter !== 'all') {
-      filtered = filtered.filter(item => item.sentiment?.toLowerCase() === sentimentFilter.toLowerCase());
-    }
-    if (emotionFilter && emotionFilter !== 'all') {
-      filtered = filtered.filter(item => item.emotion?.toLowerCase() === emotionFilter.toLowerCase());
-    }
-
-    const totalCount = filtered.length;
-    const startIndex = (page - 1) * limit;
-    const pagedItems = filtered.slice(startIndex, startIndex + limit);
-
-    return {
-      items: pagedItems,
-      total: totalCount,
-      total_pages: Math.max(1, Math.ceil(totalCount / limit))
-    };
-  };
+  const [clearing, setClearing] = useState(false);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -161,26 +48,17 @@ export default function History() {
         order: 'desc'
       });
 
-      if (res && res.data && Array.isArray(res.data.items) && res.data.items.length > 0) {
-        setPredictions(res.data.items);
-        setTotal(res.data.total || res.data.items.length);
+      if (res && res.data) {
+        setPredictions(res.data.items || []);
+        setTotal(res.data.total || 0);
         setTotalPages(res.data.total_pages || 1);
-        try {
-          localStorage.setItem('sentix_predictions_history', JSON.stringify(res.data.items));
-        } catch (e) {}
-        return;
       }
     } catch (err) {
-      console.warn('Backend prediction history offline, utilizing local audit storage:', err.message);
+      console.error('Failed to fetch prediction history:', err);
+      setError(err.response?.data?.message || err.message || 'Error loading history records.');
     } finally {
       setLoading(false);
     }
-
-    // Graceful fallback to local stored records
-    const localRes = getLocalFilteredRecords();
-    setPredictions(localRes.items);
-    setTotal(localRes.total);
-    setTotalPages(localRes.total_pages);
   };
 
   useEffect(() => {
@@ -194,27 +72,38 @@ export default function History() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this prediction audit record?')) return;
+    if (!window.confirm('Are you sure you want to delete this prediction record?')) return;
 
     setDeletingId(id);
     try {
       await deletePrediction(id);
+      setPredictions((prev) => prev.filter((p) => p.id !== id));
+      setTotal((prev) => Math.max(0, prev - 1));
+      if (inspectItem?.id === id) setInspectItem(null);
     } catch (err) {
-      console.warn('Could not delete from backend, deleting from local cache:', err.message);
+      console.error('Failed to delete prediction record:', err);
+      alert('Could not delete record: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setDeletingId(null);
     }
+  };
 
-    // Update state and local storage
-    setPredictions((prev) => prev.filter((p) => p.id !== id));
-    setTotal((prev) => Math.max(0, prev - 1));
-    if (inspectItem?.id === id) setInspectItem(null);
+  const handleClearAll = async () => {
+    if (!window.confirm('Are you sure you want to clear ALL historical prediction records from MongoDB? This cannot be undone.')) return;
 
+    setClearing(true);
     try {
-      const cached = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
-      const filtered = cached.filter(p => p.id !== id);
-      localStorage.setItem('sentix_predictions_history', JSON.stringify(filtered));
-    } catch (e) {}
-
-    setDeletingId(null);
+      await clearPredictions();
+      setPredictions([]);
+      setTotal(0);
+      setTotalPages(1);
+      setInspectItem(null);
+    } catch (err) {
+      console.error('Failed to clear predictions:', err);
+      alert('Could not clear records: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setClearing(false);
+    }
   };
 
   return (
@@ -233,13 +122,26 @@ export default function History() {
           </p>
         </div>
 
-        <button
-          onClick={fetchHistory}
-          className="px-4 py-2 rounded-xl bg-white hover:bg-[#FFF8F5] border border-[#E8E4E1] text-xs font-bold text-[#555555] transition-all flex items-center gap-1.5 shadow-soft cursor-pointer"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Records</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {total > 0 && (
+            <button
+              onClick={handleClearAll}
+              disabled={clearing}
+              className="px-4 py-2 rounded-xl bg-[#DC2626]/10 hover:bg-[#DC2626]/20 border border-[#DC2626]/30 text-xs font-bold text-[#DC2626] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className={`w-3.5 h-3.5 ${clearing ? 'animate-spin' : ''}`} />
+              <span>Clear All History</span>
+            </button>
+          )}
+
+          <button
+            onClick={fetchHistory}
+            className="px-4 py-2 rounded-xl bg-white hover:bg-[#FFF8F5] border border-[#E8E4E1] text-xs font-bold text-[#555555] transition-all flex items-center gap-1.5 shadow-soft cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh Records</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter & Search Bar */}

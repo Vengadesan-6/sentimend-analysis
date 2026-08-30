@@ -111,11 +111,12 @@ export default function LandingPage() {
   const [showJson, setShowJson] = useState(false);
   const [liveOverview, setLiveOverview] = useState(null);
   const [liveSentimentData, setLiveSentimentData] = useState(null);
+  const [analysisError, setAnalysisError] = useState(null);
   const analyzerRef = useRef(null);
 
   // Initial analysis and live analytics fetch on mount
   useEffect(() => {
-    runAnalysis(inputText);
+    runAnalysis(inputText, selectedModel);
 
     // Fetch live MongoDB analytics
     getAnalyticsOverview()
@@ -131,22 +132,34 @@ export default function LandingPage() {
       .catch(err => console.warn("Live sentiment analytics fetch:", err.message));
   }, []);
 
-  const runAnalysis = async (textToAnalyze) => {
-    if (!textToAnalyze.trim()) return;
+  const runAnalysis = async (textToAnalyze, modelOverride) => {
+    const text = textToAnalyze !== undefined ? textToAnalyze : inputText;
+    const model = modelOverride || selectedModel;
+    if (!text || !text.trim()) return;
     setAnalyzing(true);
+    setAnalysisError(null);
     try {
-      const res = await analyzeText(textToAnalyze, selectedModel);
+      const res = await analyzeText(text, model);
       setResult(res);
+      setAnalysisError(null);
     } catch (err) {
-      console.error(err);
+      console.error("Analysis error:", err);
+      setAnalysisError(err.response?.data?.message || err.message || "Failed to connect to AI Transformer engine.");
     } finally {
       setAnalyzing(false);
     }
   };
 
+  const handleModelChange = (model) => {
+    setSelectedModel(model);
+    if (inputText.trim()) {
+      runAnalysis(inputText, model);
+    }
+  };
+
   const handlePresetClick = (sample) => {
     setInputText(sample);
-    runAnalysis(sample);
+    runAnalysis(sample, selectedModel);
     if (analyzerRef.current) {
       analyzerRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -494,7 +507,7 @@ export default function LandingPage() {
                 </label>
                 <select
                   value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
+                  onChange={(e) => handleModelChange(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#E8E4E1] text-xs font-semibold text-[#0A0A0A] outline-none focus:border-[#7C3AED]"
                 >
                   <option value="cardiffnlp/twitter-roberta-base-sentiment-latest">RoBERTa (Default - High Contextual Accuracy)</option>
@@ -510,7 +523,7 @@ export default function LandingPage() {
                   onClick={() => {
                     const sample = "The noise cancellation is miraculous, but the battery drains far too fast.";
                     setInputText(sample);
-                    runAnalysis(sample);
+                    runAnalysis(sample, selectedModel);
                   }}
                   className="px-4 py-2.5 rounded-xl bg-white hover:bg-[#FFF8F5] border border-[#E8E4E1] text-xs font-bold text-[#555555] transition-all cursor-pointer"
                 >
@@ -520,7 +533,7 @@ export default function LandingPage() {
                 <button
                   type="button"
                   disabled={analyzing || !inputText.trim()}
-                  onClick={() => runAnalysis(inputText)}
+                  onClick={() => runAnalysis(inputText, selectedModel)}
                   className="btn-gradient flex-1 py-3 px-5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-premium disabled:opacity-50 cursor-pointer"
                 >
                   {analyzing ? (
@@ -548,6 +561,18 @@ export default function LandingPage() {
                   </div>
                   <h4 className="text-sm font-bold text-[#0A0A0A]">Computing Transformer Self-Attention...</h4>
                   <p className="text-xs text-[#555555]">Extracting softmax probabilities, emotions, and aspect dependencies</p>
+                </div>
+              ) : analysisError ? (
+                <div className="py-8 px-6 rounded-2xl bg-[#DC2626]/10 border border-[#DC2626]/20 text-center space-y-3">
+                  <p className="text-sm font-bold text-[#DC2626]">{analysisError}</p>
+                  <p className="text-xs text-[#555555]">Ensure the FastAPI backend is active and reachable.</p>
+                  <button
+                    type="button"
+                    onClick={() => runAnalysis(inputText, selectedModel)}
+                    className="px-4 py-2 rounded-xl bg-[#DC2626] text-white text-xs font-bold hover:bg-[#B91C1C] transition-colors cursor-pointer"
+                  >
+                    Retry Analysis
+                  </button>
                 </div>
               ) : result ? (
                 <div className="space-y-5">

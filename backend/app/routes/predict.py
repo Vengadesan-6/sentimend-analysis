@@ -1,6 +1,7 @@
 import io
 import csv
 import time
+import logging
 from datetime import datetime
 from typing import Optional
 import pandas as pd
@@ -18,8 +19,10 @@ from backend.app.database import db_instance
 from ml.inference import SentimentIntelligencePipeline
 
 router = APIRouter()
+logger = logging.getLogger("SentixPredict")
 
 @router.post("/predict", response_model=APIResponse[PredictionResponseData])
+@router.post("/sentiment", response_model=APIResponse[PredictionResponseData])
 async def predict_single_text(payload: SinglePredictionRequest):
     """
     Executes real transformer inference on a single text.
@@ -28,13 +31,21 @@ async def predict_single_text(payload: SinglePredictionRequest):
     if not payload.text or not payload.text.strip():
         raise HTTPException(status_code=400, detail="Input text cannot be empty.")
 
+    target_model = payload.model_name or payload.model
+    logger.info(f"Incoming prediction request for model [{target_model}] with text: '{payload.text[:60]}...'")
+
     pipeline = SentimentIntelligencePipeline.get_instance()
     
-    # Run transformer inference
+    # Run real transformer inference
     result = pipeline.analyze_single(
         text=payload.text,
-        model_name=payload.model_name,
+        model_name=target_model,
         include_xai=payload.include_xai
+    )
+
+    logger.info(
+        f"Inference result: sentiment={result['sentiment']}, confidence={result['confidence']}, "
+        f"emotion={result['emotion']}, model={result['model_name']}"
     )
 
     created_at = datetime.utcnow()
@@ -57,8 +68,12 @@ async def predict_single_text(payload: SinglePredictionRequest):
 
     doc_id = None
     if db_instance.db is not None:
-        insert_res = await db_instance.db["predictions"].insert_one(doc)
-        doc_id = str(insert_res.inserted_id)
+        try:
+            insert_res = await db_instance.db["predictions"].insert_one(doc)
+            doc_id = str(insert_res.inserted_id)
+        except Exception as e:
+            import logging
+            logging.getLogger("SentixPredict").warning(f"Could not persist prediction to MongoDB: {e}")
 
     response_data = PredictionResponseData(
         id=doc_id,
@@ -156,29 +171,33 @@ async def bulk_csv_analysis(
 
     dataset_id = "temp_id"
     if db_instance.db is not None:
-        ds_res = await db_instance.db["datasets"].insert_one(dataset_doc)
-        dataset_id = str(ds_res.inserted_id)
+        try:
+            ds_res = await db_instance.db["datasets"].insert_one(dataset_doc)
+            dataset_id = str(ds_res.inserted_id)
 
-        # Bulk insert prediction documents
-        prediction_docs = []
-        created_at = datetime.utcnow()
-        for res in batch_results:
-            prediction_docs.append({
-                "dataset_id": dataset_id,
-                "text": res["text"],
-                "cleaned_text": res["cleaned_text"],
-                "sentiment": res["sentiment"],
-                "confidence": res["confidence"],
-                "probabilities": res["probabilities"],
-                "emotion": res["emotion"],
-                "aspects": res.get("aspects", []),
-                "model_name": res["model_name"],
-                "processing_time_ms": res.get("processing_time_ms", 10.0),
-                "created_at": created_at
-            })
+            # Bulk insert prediction documents
+            prediction_docs = []
+            created_at = datetime.utcnow()
+            for res in batch_results:
+                prediction_docs.append({
+                    "dataset_id": dataset_id,
+                    "text": res["text"],
+                    "cleaned_text": res["cleaned_text"],
+                    "sentiment": res["sentiment"],
+                    "confidence": res["confidence"],
+                    "probabilities": res["probabilities"],
+                    "emotion": res["emotion"],
+                    "aspects": res.get("aspects", []),
+                    "model_name": res["model_name"],
+                    "processing_time_ms": res.get("processing_time_ms", 10.0),
+                    "created_at": created_at
+                })
 
-        if prediction_docs:
-            await db_instance.db["predictions"].insert_many(prediction_docs)
+            if prediction_docs:
+                await db_instance.db["predictions"].insert_many(prediction_docs)
+        except Exception as e:
+            import logging
+            logging.getLogger("SentixPredict").warning(f"Could not persist bulk dataset to MongoDB: {e}")
 
     return APIResponse(
         success=True,

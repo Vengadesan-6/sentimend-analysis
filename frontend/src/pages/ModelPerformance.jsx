@@ -193,62 +193,73 @@ export default function ModelPerformance() {
       </div>
 
       {/* Selected Model Confusion Matrix Detail */}
-      {selectedModel && selectedModel.confusion_matrix && (
-        <div className="editorial-card p-8 rounded-[32px] space-y-4 shadow-floating">
-          <div className="flex items-center justify-between border-b border-[#E8E4E1] pb-3">
-            <div>
-              <h3 className="text-base font-bold text-[#0A0A0A] font-display flex items-center gap-2">
-                <Layers className="w-4 h-4 text-[#7C3AED]" />
-                Confusion Matrix: {selectedModel.display_name}
-              </h3>
-              <p className="text-xs text-[#555555] mt-0.5">
-                Evaluated on {selectedModel.test_sample_count} real test samples
-              </p>
-            </div>
-            <span className="text-xs font-mono text-[#888888]">
-              {new Date(selectedModel.evaluated_at).toLocaleString()}
-            </span>
-          </div>
+      {selectedModel && selectedModel.confusion_matrix && (() => {
+        const rawCm = selectedModel.confusion_matrix;
+        const labels = rawCm.labels || ['Positive', 'Neutral', 'Negative'];
+        const matrix = Array.isArray(rawCm) ? rawCm : rawCm.matrix || [];
+        const evaluatedDate = selectedModel.evaluated_at
+          ? isNaN(Date.parse(selectedModel.evaluated_at))
+            ? selectedModel.evaluated_at
+            : new Date(selectedModel.evaluated_at).toLocaleDateString()
+          : 'Benchmark Baseline';
 
-          <div className="overflow-x-auto">
-            <table className="w-full max-w-md mx-auto text-center text-xs border-collapse font-mono">
-              <thead>
-                <tr>
-                  <th className="p-2 text-[#888888]">Actual \ Predicted</th>
-                  {selectedModel.confusion_matrix.labels.map((lbl) => (
-                    <th key={lbl} className="p-2 text-[#7C3AED] font-bold border-b border-[#E8E4E1]">
-                      {lbl}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {selectedModel.confusion_matrix.matrix.map((row, rIdx) => (
-                  <tr key={rIdx} className="border-b border-[#E8E4E1]">
-                    <td className="p-2 font-bold text-[#7C3AED] text-left border-r border-[#E8E4E1]">
-                      {selectedModel.confusion_matrix.labels[rIdx]}
-                    </td>
-                    {row.map((val, cIdx) => (
-                      <td
-                        key={cIdx}
-                        className={`p-3 font-bold transition-all ${
-                          rIdx === cIdx
-                            ? 'bg-[#16A34A]/20 text-[#16A34A]'
-                            : val > 0
-                            ? 'bg-[#DC2626]/10 text-[#DC2626]'
-                            : 'text-[#888888]'
-                        }`}
-                      >
-                        {val}
-                      </td>
+        return (
+          <div className="editorial-card p-8 rounded-[32px] space-y-4 shadow-floating">
+            <div className="flex items-center justify-between border-b border-[#E8E4E1] pb-3">
+              <div>
+                <h3 className="text-base font-bold text-[#0A0A0A] font-display flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[#7C3AED]" />
+                  Confusion Matrix: {selectedModel.display_name}
+                </h3>
+                <p className="text-xs text-[#555555] mt-0.5">
+                  Evaluated on {selectedModel.test_sample_count} real test samples
+                </p>
+              </div>
+              <span className="text-xs font-mono text-[#888888]">
+                {evaluatedDate}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full max-w-md mx-auto text-center text-xs border-collapse font-mono">
+                <thead>
+                  <tr>
+                    <th className="p-2 text-[#888888]">Actual \ Predicted</th>
+                    {labels.map((lbl) => (
+                      <th key={lbl} className="p-2 text-[#7C3AED] font-bold border-b border-[#E8E4E1]">
+                        {lbl}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {matrix.map((row, rIdx) => (
+                    <tr key={rIdx} className="border-b border-[#E8E4E1]">
+                      <td className="p-2 font-bold text-[#7C3AED] text-left border-r border-[#E8E4E1]">
+                        {labels[rIdx] || `Class ${rIdx}`}
+                      </td>
+                      {row.map((val, cIdx) => (
+                        <td
+                          key={cIdx}
+                          className={`p-3 font-bold transition-all ${
+                            rIdx === cIdx
+                              ? 'bg-[#16A34A]/20 text-[#16A34A]'
+                              : val > 0
+                              ? 'bg-[#DC2626]/10 text-[#DC2626]'
+                              : 'text-[#888888]'
+                          }`}
+                        >
+                          {val}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -7,6 +7,7 @@ from backend.app.database import db_instance
 router = APIRouter()
 
 @router.get("/predictions", response_model=APIResponse[dict])
+@router.get("/history", response_model=APIResponse[dict])
 async def get_predictions(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=10, ge=1, le=100),
@@ -97,6 +98,7 @@ async def get_predictions(
         )
 
 @router.get("/predictions/{pred_id}", response_model=APIResponse[dict])
+@router.get("/history/{pred_id}", response_model=APIResponse[dict])
 async def get_prediction_by_id(pred_id: str):
     """
     Fetch single prediction details.
@@ -125,9 +127,10 @@ async def get_prediction_by_id(pred_id: str):
     )
 
 @router.delete("/predictions/{pred_id}", response_model=APIResponse[dict])
+@router.delete("/history/{pred_id}", response_model=APIResponse[dict])
 async def delete_prediction(pred_id: str):
     """
-    Delete a prediction record by ID.
+    Delete a single prediction record by ID.
     """
     if db_instance.db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
@@ -145,4 +148,20 @@ async def delete_prediction(pred_id: str):
         success=True,
         data={"deleted_id": pred_id},
         message="Prediction deleted successfully"
+    )
+
+@router.delete("/predictions", response_model=APIResponse[dict])
+@router.delete("/history", response_model=APIResponse[dict])
+async def clear_all_predictions():
+    """
+    Clear all prediction records from MongoDB.
+    """
+    if db_instance.db is None:
+        raise HTTPException(status_code=500, detail="Database not connected")
+
+    res = await db_instance.db["predictions"].delete_many({})
+    return APIResponse(
+        success=True,
+        data={"deleted_count": res.deleted_count},
+        message=f"Cleared {res.deleted_count} prediction records successfully"
     )

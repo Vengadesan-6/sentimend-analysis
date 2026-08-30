@@ -84,6 +84,11 @@ export const deletePrediction = async (id) => {
   return response.data;
 };
 
+export const clearPredictions = async () => {
+  const response = await api.delete('/predictions');
+  return response.data;
+};
+
 // Analytics
 export const getAnalyticsOverview = async () => {
   const response = await api.get('/analytics/overview');

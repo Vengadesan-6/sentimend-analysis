@@ -12,6 +12,7 @@ class APIResponse(BaseModel, Generic[T]):
 class SinglePredictionRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000, description="Input text up to 5000 chars")
     model_name: Optional[str] = Field(default=None, description="Optional target transformer model")
+    model: Optional[str] = Field(default=None, description="Alias for model_name")
     include_xai: bool = Field(default=True, description="Whether to include token-level explainability")
 
 class AspectResult(BaseModel):
