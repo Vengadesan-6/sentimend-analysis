@@ -22,7 +22,9 @@ router = APIRouter()
 logger = logging.getLogger("SentixPredict")
 
 @router.post("/predict", response_model=APIResponse[PredictionResponseData])
+@router.post("/predict/", response_model=APIResponse[PredictionResponseData])
 @router.post("/sentiment", response_model=APIResponse[PredictionResponseData])
+@router.post("/sentiment/", response_model=APIResponse[PredictionResponseData])
 async def predict_single_text(payload: SinglePredictionRequest):
     """
     Executes real transformer inference on a single text.

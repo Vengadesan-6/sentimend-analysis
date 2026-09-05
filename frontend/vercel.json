@@ -5,6 +5,10 @@
       "destination": "https://sentimend-analysis.onrender.com/api"
     },
     {
+      "source": "/api/",
+      "destination": "https://sentimend-analysis.onrender.com/api"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://sentimend-analysis.onrender.com/api/:path*"
     },

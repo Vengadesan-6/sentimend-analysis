@@ -87,6 +87,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, prefix=settings.API_PREFIX, tags=["Health"])
 app.include_router(health.router, tags=["Health"])
 app.include_router(predict.router, prefix=settings.API_PREFIX, tags=["Inference"])
+app.include_router(predict.router, tags=["Inference"])
 app.include_router(predictions.router, prefix=settings.API_PREFIX, tags=["Predictions"])
 app.include_router(analytics.router, prefix=settings.API_PREFIX, tags=["Analytics"])
 app.include_router(models.router, prefix=settings.API_PREFIX, tags=["Model Performance"])
