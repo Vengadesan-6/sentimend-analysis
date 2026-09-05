@@ -1,3 +1,5 @@
+import os
+import threading
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -19,23 +21,33 @@ logger = logging.getLogger("SentixMain")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Connect DB and Warm up Models
+    # Startup: Connect DB and initialize platform safely
     logger.info("Initializing Sentix AI Platform...")
-    await connect_to_mongo()
-    
-    logger.info("Warming up ML Singleton Pipeline...")
     try:
-        pipeline = SentimentIntelligencePipeline.get_instance()
-        warmup_res = pipeline.analyze_single("System startup initialization check.")
-        logger.info(f"Model engine warmed up successfully in {warmup_res['processing_time_ms']}ms.")
+        await connect_to_mongo()
     except Exception as e:
-        logger.error(f"Error warming up ML models: {e}")
+        logger.warning(f"Handled database startup warning: {e}")
+    
+    # Warm up models in background daemon thread so Uvicorn binds port immediately!
+    def _warmup_background():
+        try:
+            logger.info("Background thread warming up ML Singleton Pipeline...")
+            pipeline = SentimentIntelligencePipeline.get_instance()
+            warmup_res = pipeline.analyze_single("System startup initialization check.")
+            logger.info(f"Model engine warmed up successfully in {warmup_res['processing_time_ms']}ms.")
+        except Exception as e:
+            logger.error(f"Error warming up ML models: {e}")
+
+    threading.Thread(target=_warmup_background, daemon=True).start()
 
     yield
 
     # Shutdown
     logger.info("Shutting down Sentix AI Platform...")
-    await close_mongo_connection()
+    try:
+        await close_mongo_connection()
+    except Exception as e:
+        logger.warning(f"Handled database shutdown warning: {e}")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -86,6 +98,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include Routers
 app.include_router(health.router, prefix=settings.API_PREFIX, tags=["Health"])
+app.include_router(health.router, tags=["Health"])
 app.include_router(predict.router, prefix=settings.API_PREFIX, tags=["Inference"])
 app.include_router(predictions.router, prefix=settings.API_PREFIX, tags=["Predictions"])
 app.include_router(analytics.router, prefix=settings.API_PREFIX, tags=["Analytics"])
@@ -98,9 +111,12 @@ async def root():
         "version": settings.VERSION,
         "status": "operational",
         "docs": "/docs",
-        "health": "/api/health"
+        "health": "/health",
+        "api_health": "/api/health"
     }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=settings.PORT, reload=settings.DEBUG)
+    port = int(os.getenv("PORT", str(settings.PORT)))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("backend.app.main:app", host=host, port=port, reload=settings.DEBUG)
