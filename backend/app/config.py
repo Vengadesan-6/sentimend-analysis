@@ -1,11 +1,10 @@
 import os
 import json
 from typing import List, Union
-from pydantic import ConfigDict
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    model_config = ConfigDict(extra="ignore", env_file=".env")
+    model_config = SettingsConfigDict(extra="ignore", env_file=".env")
 
     PROJECT_NAME: str = "Sentix AI — Sentiment Intelligence Platform"
     VERSION: str = "1.0.0"

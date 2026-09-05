@@ -46,8 +46,8 @@ def validate_dataset(df: pd.DataFrame, text_col: str = "text", label_col: Option
     stats = {
         "total_rows": len(df),
         "columns": list(df.columns),
-        "missing_texts": int(df[text_col].isna().sum()) if text_col in df.columns else 0,
-        "empty_texts": int((df[text_col].astype(str).str.strip() == '').sum()) if text_col in df.columns else 0,
+        "missing_texts": int(df[text_col].isna().values.sum()) if text_col in df.columns else 0,
+        "empty_texts": int((df[text_col].astype(str).str.strip() == '').values.sum()) if text_col in df.columns else 0,
     }
     
     if label_col and label_col in df.columns:
@@ -75,14 +75,18 @@ def prepare_benchmark_dataset(
     df = df[df[text_col].str.len() > 3]
     
     # Train / Val / Test Split
-    train_val_df, test_df = train_test_split(
+    train_val_raw, test_raw = train_test_split(
         df, test_size=test_size, random_state=random_state, stratify=df[label_col] if label_col in df.columns else None
     )
+    train_val_df = pd.DataFrame(train_val_raw)
+    test_df = pd.DataFrame(test_raw)
     
     val_relative_size = val_size / (1.0 - test_size)
-    train_df, val_df = train_test_split(
+    train_raw, val_raw = train_test_split(
         train_val_df, test_size=val_relative_size, random_state=random_state, stratify=train_val_df[label_col] if label_col in train_val_df.columns else None
     )
+    train_df = pd.DataFrame(train_raw)
+    val_df = pd.DataFrame(val_raw)
     
     train_path = f"{output_dir}/train.csv"
     val_path = f"{output_dir}/val.csv"

@@ -125,7 +125,7 @@ class SentimentTransformerEngine:
                 }
 
                 # Top predicted sentiment & confidence from actual model probability
-                predicted_sentiment = max(normalized_probs, key=normalized_probs.get)
+                predicted_sentiment = max(normalized_probs, key=lambda k: normalized_probs[k])
                 confidence = normalized_probs[predicted_sentiment]
 
                 logger.debug(

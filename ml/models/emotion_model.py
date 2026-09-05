@@ -63,7 +63,7 @@ class EmotionTransformerEngine:
                     label = self.id2label.get(class_idx, f"emotion_{class_idx}").lower()
                     raw_scores[label] = round(float(p), 4)
 
-                top_emotion = max(raw_scores, key=raw_scores.get)
+                top_emotion = max(raw_scores, key=lambda k: raw_scores[k])
                 confidence = raw_scores[top_emotion]
 
                 all_results.append({

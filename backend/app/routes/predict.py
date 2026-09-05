@@ -106,7 +106,7 @@ async def bulk_csv_analysis(
     Handles CSV file upload, validates 'text' column, executes true batched inference,
     persists records and returns aggregate summary statistics.
     """
-    if not file.filename.endswith(".csv"):
+    if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Invalid file format. Only .csv files are supported.")
 
     content = await file.read()
@@ -203,7 +203,7 @@ async def bulk_csv_analysis(
         success=True,
         data=BulkAnalysisSummary(
             dataset_id=dataset_id,
-            filename=file.filename,
+            filename=file.filename or "uploaded.csv",
             total_records=total_records,
             processed_records=total_records,
             positive_count=pos_count,

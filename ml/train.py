@@ -50,7 +50,9 @@ class SentimentDataset(Dataset):
             "labels": torch.tensor(label, dtype=torch.long)
         }
 
-def map_labels(label_series: pd.Series) -> Tuple_Labels:
+from typing import List, Any
+
+def map_labels(label_series: Any) -> List[int]:
     """
     Converts string sentiments ('Positive', 'Neutral', 'Negative') to integer class indices.
     """
