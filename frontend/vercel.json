@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api",
+      "destination": "https://sentix-backend.onrender.com/api"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://sentix-backend.onrender.com/api/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

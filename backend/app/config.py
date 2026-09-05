@@ -28,27 +28,38 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: Union[str, List[str]] = [
+        "https://sentimend-analysis.vercel.app",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8080",
         "http://127.0.0.1:8080",
-        "*"
     ]
 
     def get_cors_origins(self) -> List[str]:
         raw = os.getenv("CORS_ORIGINS") or self.CORS_ORIGINS
+        origins: List[str] = []
         if isinstance(raw, list):
-            return raw
-        if isinstance(raw, str):
+            origins = list(raw)
+        elif isinstance(raw, str):
             raw = raw.strip()
             if raw.startswith("[") and raw.endswith("]"):
                 try:
-                    return json.loads(raw)
+                    origins = json.loads(raw)
                 except Exception:
                     pass
-            return [o.strip() for o in raw.split(",") if o.strip()]
-        return ["*"]
+            if not origins:
+                origins = [o.strip() for o in raw.split(",") if o.strip()]
+        else:
+            origins = ["https://sentimend-analysis.vercel.app"]
+
+        # Ensure real Vercel production domain is always included
+        if "https://sentimend-analysis.vercel.app" not in origins:
+            origins.append("https://sentimend-analysis.vercel.app")
+
+        # Avoid Starlette AssertionError: Cannot use allow_origins=['*'] with allow_credentials=True
+        cleaned = [o for o in origins if o != "*"]
+        return cleaned if cleaned else ["https://sentimend-analysis.vercel.app"]
 
 settings = Settings()
