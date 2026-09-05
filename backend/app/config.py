@@ -9,14 +9,14 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Sentix AI — Sentiment Intelligence Platform"
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api"
-    DEBUG: bool = True
-    ENVIRONMENT: str = "development"
+    DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production")
     
     PORT: int = int(os.getenv("PORT", "8000"))
     HOST: str = os.getenv("HOST", "0.0.0.0")
     
     # MongoDB
-    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    MONGODB_URL: str = os.getenv("MONGODB_URL", "")
     DATABASE_NAME: str = os.getenv("DATABASE_NAME", "sentiment_platform")
     
     # Models

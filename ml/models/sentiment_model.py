@@ -35,6 +35,7 @@ class SentimentTransformerEngine:
         self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
         self.model.to(self.device)
         self.model.eval()
+        self.model.requires_grad_(False)
         
         # Determine model output mapping
         self.id2label = self.model.config.id2label

@@ -24,6 +24,7 @@ class EmotionTransformerEngine:
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
         self.model.to(self.device)
         self.model.eval()
+        self.model.requires_grad_(False)
         self.id2label = self.model.config.id2label
 
     @classmethod

@@ -13,7 +13,7 @@
       "destination": "https://sentimend-analysis.onrender.com/api/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api).*)",
       "destination": "/index.html"
     }
   ]

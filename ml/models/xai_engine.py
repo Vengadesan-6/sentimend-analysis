@@ -57,14 +57,17 @@ class ExplainableAIEngine:
         pred_class = torch.argmax(probs, dim=-1).item()
 
         # Backward pass on predicted class logit
-        model.zero_grad()
+        model.zero_grad(set_to_none=True)
         target_logit = logits[0, pred_class]
         target_logit.backward()
 
         # Saliency = Norm of gradients across embedding dimension
         grads = inputs_embeds.grad[0] # (seq_len, hidden_dim)
-        # Dot product with embeddings (Grad * Input attribution)
         attribution = torch.sum(grads * inputs_embeds[0], dim=-1).detach().cpu().numpy()
+        
+        # Immediately release gradient tensors to minimize RAM
+        inputs_embeds.grad = None
+        model.zero_grad(set_to_none=True)
 
         # Decode tokens
         raw_tokens = tokenizer.convert_ids_to_tokens(input_ids[0].cpu().numpy())
