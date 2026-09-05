@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sentix-backend
+    name: sentix-backend-api
     env: python
     buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
@@ -12,6 +12,6 @@ services:
       - key: CORS_ORIGINS
         value: '["https://sentimend-analysis.vercel.app"]'
       - key: MONGODB_URL
-        value: '' # TODO: Add from dashboard
+        value: '' # Optional: Add MongoDB Atlas connection string from dashboard
       - key: DATABASE_NAME
         value: sentiment_platform
