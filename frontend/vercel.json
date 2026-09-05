@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/api",
-      "destination": "https://sentix-backend.onrender.com/api"
+      "destination": "https://<YOUR-RENDER-NAME>.onrender.com/api"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://sentix-backend.onrender.com/api/:path*"
+      "destination": "https://<YOUR-RENDER-NAME>.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",

@@ -1,28 +1,53 @@
 import time
 from typing import Dict, List, Optional
-from ml.models.sentiment_model import SentimentTransformerEngine
-from ml.models.emotion_model import EmotionTransformerEngine
-from ml.models.absa_engine import AspectSentimentEngine
-from ml.models.xai_engine import ExplainableAIEngine
 from ml.preprocess import clean_text
 
 class SentimentIntelligencePipeline:
     """
     Unified Pipeline orchestrating Sentiment, Emotion, ABSA, and Explainable AI.
+    Loads transformer models lazily on first prediction request to ensure instant startup.
     """
     _instance = None
 
     def __init__(self):
-        self.sentiment_engine = SentimentTransformerEngine.get_instance()
-        self.emotion_engine = EmotionTransformerEngine.get_instance()
-        self.absa_engine = AspectSentimentEngine.get_instance()
-        self.xai_engine = ExplainableAIEngine.get_instance()
+        self._sentiment_engine = None
+        self._emotion_engine = None
+        self._absa_engine = None
+        self._xai_engine = None
 
     @classmethod
     def get_instance(cls) -> "SentimentIntelligencePipeline":
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    @property
+    def sentiment_engine(self):
+        if self._sentiment_engine is None:
+            from ml.models.sentiment_model import SentimentTransformerEngine
+            self._sentiment_engine = SentimentTransformerEngine.get_instance()
+        return self._sentiment_engine
+
+    @property
+    def emotion_engine(self):
+        if self._emotion_engine is None:
+            from ml.models.emotion_model import EmotionTransformerEngine
+            self._emotion_engine = EmotionTransformerEngine.get_instance()
+        return self._emotion_engine
+
+    @property
+    def absa_engine(self):
+        if self._absa_engine is None:
+            from ml.models.absa_engine import AspectSentimentEngine
+            self._absa_engine = AspectSentimentEngine.get_instance()
+        return self._absa_engine
+
+    @property
+    def xai_engine(self):
+        if self._xai_engine is None:
+            from ml.models.xai_engine import ExplainableAIEngine
+            self._xai_engine = ExplainableAIEngine.get_instance()
+        return self._xai_engine
 
     def analyze_single(self, text: str, model_name: Optional[str] = None, include_xai: bool = True) -> Dict:
         """
@@ -32,7 +57,12 @@ class SentimentIntelligencePipeline:
         cleaned = clean_text(text)
         
         # 1. Sentiment Engine (select specific model if requested)
-        sent_engine = SentimentTransformerEngine.get_instance(model_name) if model_name else self.sentiment_engine
+        if model_name:
+            from ml.models.sentiment_model import SentimentTransformerEngine
+            sent_engine = SentimentTransformerEngine.get_instance(model_name)
+        else:
+            sent_engine = self.sentiment_engine
+
         sent_res = sent_engine.predict_single(cleaned)
         
         # 2. Emotion Engine
@@ -65,7 +95,12 @@ class SentimentIntelligencePipeline:
         Batched inference for bulk CSV / array processing with batch tokenizer.
         """
         cleaned_texts = [clean_text(t) for t in texts]
-        sent_engine = SentimentTransformerEngine.get_instance(model_name) if model_name else self.sentiment_engine
+        
+        if model_name:
+            from ml.models.sentiment_model import SentimentTransformerEngine
+            sent_engine = SentimentTransformerEngine.get_instance(model_name)
+        else:
+            sent_engine = self.sentiment_engine
         
         # True batched tensor execution
         sent_batch = sent_engine.predict_batch(cleaned_texts)

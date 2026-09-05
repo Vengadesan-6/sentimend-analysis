@@ -11,7 +11,6 @@ from backend.app.config import settings
 from backend.app.database import connect_to_mongo, close_mongo_connection
 from backend.app.middleware import LoggingAndTimingMiddleware
 from backend.app.routes import health, predict, predictions, analytics, models
-from ml.inference import SentimentIntelligencePipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,24 +20,12 @@ logger = logging.getLogger("SentixMain")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Connect DB and initialize platform safely
+    # Startup: Connect DB safely (non-blocking)
     logger.info("Initializing Sentix AI Platform...")
     try:
         await connect_to_mongo()
     except Exception as e:
         logger.warning(f"Handled database startup warning: {e}")
-    
-    # Warm up models in background daemon thread so Uvicorn binds port immediately!
-    def _warmup_background():
-        try:
-            logger.info("Background thread warming up ML Singleton Pipeline...")
-            pipeline = SentimentIntelligencePipeline.get_instance()
-            warmup_res = pipeline.analyze_single("System startup initialization check.")
-            logger.info(f"Model engine warmed up successfully in {warmup_res['processing_time_ms']}ms.")
-        except Exception as e:
-            logger.error(f"Error warming up ML models: {e}")
-
-    threading.Thread(target=_warmup_background, daemon=True).start()
 
     yield
 
