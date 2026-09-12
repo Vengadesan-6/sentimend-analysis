@@ -24,22 +24,23 @@ async def get_analytics_overview():
     }
 
     try:
-        if db_instance.db is None:
+        db = db_instance.db
+        if db is None:
             return APIResponse(
                 success=True,
                 data=default_overview,
                 message="Operating in stateless mode (no database connected)"
             )
 
-        total = await db_instance.db["predictions"].count_documents({})
-        pos_count = await db_instance.db["predictions"].count_documents({"sentiment": "Positive"})
-        neg_count = await db_instance.db["predictions"].count_documents({"sentiment": "Negative"})
-        neu_count = await db_instance.db["predictions"].count_documents({"sentiment": "Neutral"})
+        total = await db["predictions"].count_documents({})
+        pos_count = await db["predictions"].count_documents({"sentiment": "Positive"})
+        neg_count = await db["predictions"].count_documents({"sentiment": "Negative"})
+        neu_count = await db["predictions"].count_documents({"sentiment": "Neutral"})
 
         pipeline = [
             {"$group": {"_id": None, "avg_conf": {"$avg": "$confidence"}}}
         ]
-        avg_res = await db_instance.db["predictions"].aggregate(pipeline).to_list(1)
+        avg_res = await db["predictions"].aggregate(pipeline).to_list(1)
         avg_conf = round(avg_res[0]["avg_conf"], 4) if avg_res and avg_res[0].get("avg_conf") else 0.0
 
         return APIResponse(
@@ -77,7 +78,8 @@ async def get_sentiment_analytics():
     }
 
     try:
-        if db_instance.db is None:
+        db = db_instance.db
+        if db is None:
             return APIResponse(
                 success=True,
                 data=default_sentiment,
@@ -88,7 +90,7 @@ async def get_sentiment_analytics():
         dist_pipeline = [
             {"$group": {"_id": "$sentiment", "count": {"$sum": 1}}}
         ]
-        dist_res = await db_instance.db["predictions"].aggregate(dist_pipeline).to_list(10)
+        dist_res = await db["predictions"].aggregate(dist_pipeline).to_list(10)
         distribution = {item["_id"] or "Unknown": item["count"] for item in dist_res}
 
         # Group by date for trend
@@ -113,7 +115,7 @@ async def get_sentiment_analytics():
             {"$limit": 14}
         ]
         try:
-            trend_res = await db_instance.db["predictions"].aggregate(trend_pipeline).to_list(30)
+            trend_res = await db["predictions"].aggregate(trend_pipeline).to_list(30)
         except Exception:
             trend_res = []
         
@@ -140,7 +142,7 @@ async def get_sentiment_analytics():
             }
         ]
         try:
-            conf_res = await db_instance.db["predictions"].aggregate(conf_pipeline).to_list(10)
+            conf_res = await db["predictions"].aggregate(conf_pipeline).to_list(10)
             bucket_labels = {
                 0.0: "0-50%",
                 0.5: "50-60%",
@@ -179,7 +181,8 @@ async def get_emotion_analytics():
     Returns aggregated emotion classification statistics from MongoDB, with graceful stateless fallback.
     """
     try:
-        if db_instance.db is None:
+        db = db_instance.db
+        if db is None:
             return APIResponse(
                 success=True,
                 data={"emotions": []},
@@ -190,7 +193,7 @@ async def get_emotion_analytics():
             {"$group": {"_id": "$emotion", "count": {"$sum": 1}, "avg_confidence": {"$avg": "$confidence"}}},
             {"$sort": {"count": -1}}
         ]
-        emotions_res = await db_instance.db["predictions"].aggregate(pipeline).to_list(20)
+        emotions_res = await db["predictions"].aggregate(pipeline).to_list(20)
 
         emotions = []
         for item in emotions_res:
@@ -219,7 +222,8 @@ async def get_aspect_analytics():
     Returns aggregated aspect-based sentiment data from MongoDB, with graceful stateless fallback.
     """
     try:
-        if db_instance.db is None:
+        db = db_instance.db
+        if db is None:
             return APIResponse(
                 success=True,
                 data={"aspects": []},
@@ -241,7 +245,7 @@ async def get_aspect_analytics():
             {"$sort": {"count": -1}},
             {"$limit": 15}
         ]
-        aspects_res = await db_instance.db["predictions"].aggregate(pipeline).to_list(15)
+        aspects_res = await db["predictions"].aggregate(pipeline).to_list(15)
 
         aspects = []
         for item in aspects_res:

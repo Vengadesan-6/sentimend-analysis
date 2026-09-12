@@ -7,15 +7,24 @@ logger = logging.getLogger("SentixDB")
 
 def is_valid_mongodb_url(url: Optional[str]) -> bool:
     """
-    Validates if the provided MongoDB URL is non-empty, stripped,
-    and starts with a recognized MongoDB URI scheme.
+    Validates if the provided MongoDB URL is non-empty, well-formed,
+    and has valid host information via PyMongo's URI parser.
     """
     if not url or not isinstance(url, str):
         return False
     cleaned = url.strip()
     if not cleaned or cleaned.lower() in ("none", "null", "undefined", '""', "''"):
         return False
-    return cleaned.startswith("mongodb://") or cleaned.startswith("mongodb+srv://")
+    if not (cleaned.startswith("mongodb://") or cleaned.startswith("mongodb+srv://")):
+        return False
+    
+    try:
+        from pymongo.uri_parser import parse_uri
+        parsed = parse_uri(cleaned)
+        nodes = parsed.get("nodelist") or []
+        return len(nodes) > 0
+    except Exception:
+        return False
 
 class Database:
     client: Optional[AsyncIOMotorClient] = None
@@ -24,27 +33,27 @@ class Database:
 
     @property
     def db(self) -> Optional[AsyncIOMotorDatabase]:
-        if self._db is not None:
-            return self._db
-
-        if self._stateless:
-            return None
-
-        raw_url = getattr(settings, "MONGODB_URL", "")
-        if not is_valid_mongodb_url(raw_url):
-            self._stateless = True
-            return None
-
         try:
+            if self._db is not None:
+                return self._db
+
+            if self._stateless:
+                return None
+
+            raw_url = getattr(settings, "MONGODB_URL", "")
+            if not is_valid_mongodb_url(raw_url):
+                self._stateless = True
+                return None
+
             self.client = AsyncIOMotorClient(raw_url.strip(), serverSelectionTimeoutMS=2000)
             self._db = self.client[settings.DATABASE_NAME]
+            return self._db
         except Exception as e:
-            logger.warning(f"Failed to initialize MongoDB client: {e}. Switching to stateless mode.")
+            logger.warning(f"MongoDB connection initialization error: {e}. Operating in stateless mode.")
             self.client = None
             self._db = None
             self._stateless = True
-
-        return self._db
+            return None
 
     @db.setter
     def db(self, value):
@@ -57,6 +66,7 @@ class Database:
 db_instance = Database()
 
 async def connect_to_mongo():
+    db_instance._stateless = False
     mongo_url = getattr(settings, "MONGODB_URL", "")
     is_prod = (getattr(settings, "ENVIRONMENT", "") or "").lower() == "production"
     
