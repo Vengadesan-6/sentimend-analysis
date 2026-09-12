@@ -1,7 +1,9 @@
 import re
-import spacy
+import logging
 from typing import List, Dict, Tuple
 from ml.models.sentiment_model import SentimentTransformerEngine
+
+logger = logging.getLogger(__name__)
 
 class AspectSentimentEngine:
     """
@@ -12,14 +14,18 @@ class AspectSentimentEngine:
     _instance = None
 
     def __init__(self):
+        self.nlp = None
         try:
-            self.nlp = spacy.load("en_core_web_sm")
-        except Exception:
-            # Fallback to simple English parser if en_core_web_sm model isn't pre-downloaded
-            from spacy.lang.en import English
-            self.nlp = English()
-            if "sentencizer" not in self.nlp.pipe_names:
-                self.nlp.add_pipe("sentencizer")
+            import spacy
+            try:
+                self.nlp = spacy.load("en_core_web_sm")
+            except Exception:
+                from spacy.lang.en import English
+                self.nlp = English()
+                if "sentencizer" not in self.nlp.pipe_names:
+                    self.nlp.add_pipe("sentencizer")
+        except Exception as e:
+            logger.warning(f"Spacy unavailable ({e}), falling back to regex rules.")
 
     @classmethod
     def get_instance(cls) -> "AspectSentimentEngine":
@@ -31,41 +37,56 @@ class AspectSentimentEngine:
         """
         Extracts aspect targets and their supporting syntactic context spans.
         """
-        doc = self.nlp(text)
         aspects_found = []
         seen_aspects = set()
 
-        # Strategy 1: Dependency parsing & noun chunks
-        if hasattr(doc, "noun_chunks") and doc.has_annotation("DEP"):
-            for chunk in doc.noun_chunks:
-                # Filter out pure pronouns or stopwords
-                clean_chunk = chunk.text.strip().lower()
-                if chunk.root.pos_ in ["NOUN", "PROPN"] and len(clean_chunk) > 2 and clean_chunk not in ["it", "this", "that", "they", "we", "i", "you"]:
-                    # Find supporting span (the sentence or modifier subclause containing the aspect)
-                    sent_span = chunk.sent.text.strip()
-                    
-                    # Extract surrounding modifier tokens
-                    modifiers = [w.text for w in chunk.root.children if w.pos_ in ["ADJ", "ADV", "VERB"]]
-                    aspect_name = chunk.text.strip()
-                    
-                    if aspect_name.lower() not in seen_aspects:
-                        seen_aspects.add(aspect_name.lower())
-                        aspects_found.append({
-                            "aspect": aspect_name,
-                            "span": sent_span,
-                            "modifiers": modifiers
-                        })
+        if self.nlp is not None:
+            doc = self.nlp(text)
+            # Strategy 1: Dependency parsing & noun chunks
+            if hasattr(doc, "noun_chunks") and doc.has_annotation("DEP"):
+                for chunk in doc.noun_chunks:
+                    # Filter out pure pronouns or stopwords
+                    clean_chunk = chunk.text.strip().lower()
+                    if chunk.root.pos_ in ["NOUN", "PROPN"] and len(clean_chunk) > 2 and clean_chunk not in ["it", "this", "that", "they", "we", "i", "you"]:
+                        # Find supporting span (the sentence or modifier subclause containing the aspect)
+                        sent_span = chunk.sent.text.strip()
+                        
+                        # Extract surrounding modifier tokens
+                        modifiers = [w.text for w in chunk.root.children if w.pos_ in ["ADJ", "ADV", "VERB"]]
+                        aspect_name = chunk.text.strip()
+                        
+                        if aspect_name.lower() not in seen_aspects:
+                            seen_aspects.add(aspect_name.lower())
+                            aspects_found.append({
+                                "aspect": aspect_name,
+                                "span": sent_span,
+                                "modifiers": modifiers
+                            })
+            else:
+                # Fallback for lightweight rule-based sentence segmentation & noun candidate extraction
+                for sent in doc.sents:
+                    words = re.findall(r'\b[A-Za-z]{3,}\b', sent.text)
+                    for w in words:
+                        if w.lower() in ["battery", "camera", "screen", "price", "delivery", "support", "performance", "sound", "ui", "build", "quality", "service", "hardware", "software"]:
+                            if w.lower() not in seen_aspects:
+                                seen_aspects.add(w.lower())
+                                aspects_found.append({
+                                    "aspect": w,
+                                    "span": sent.text.strip(),
+                                    "modifiers": []
+                                })
         else:
-            # Fallback for lightweight rule-based sentence segmentation & noun candidate extraction
-            for sent in doc.sents:
-                words = re.findall(r'\b[A-Za-z]{3,}\b', sent.text)
+            # Complete fallback without Spacy
+            sentences = re.split(r'(?<=[.!?]) +', text)
+            for sent in sentences:
+                words = re.findall(r'\b[A-Za-z]{3,}\b', sent)
                 for w in words:
-                    if w.lower() in ["battery", "camera", "screen", "price", "delivery", "support", "performance", "sound", "ui", "build", "quality", "service", "hardware", "software"]:
+                    if w.lower() in ["battery", "camera", "screen", "price", "delivery", "support", "performance", "sound", "ui", "build", "quality", "service", "hardware", "software", "experience", "design"]:
                         if w.lower() not in seen_aspects:
                             seen_aspects.add(w.lower())
                             aspects_found.append({
                                 "aspect": w,
-                                "span": sent.text.strip(),
+                                "span": sent.strip(),
                                 "modifiers": []
                             })
 
