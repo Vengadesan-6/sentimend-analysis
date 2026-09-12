@@ -1,32 +1,36 @@
-from fastapi import APIRouter, HTTPException
-from datetime import datetime, timedelta
+import logging
+from fastapi import APIRouter
+from datetime import datetime
 from backend.app.schemas import APIResponse
 from backend.app.database import db_instance
 
+logger = logging.getLogger("SentixAnalytics")
 router = APIRouter()
 
 @router.get("/analytics/overview", response_model=APIResponse[dict])
 async def get_analytics_overview():
     """
-    Computes overall KPI statistics directly from MongoDB.
+    Computes overall KPI statistics directly from MongoDB, with graceful stateless fallback.
     """
-    if db_instance.db is None:
-        return APIResponse(
-            success=True,
-            data={
-                "total_analyses": 0,
-                "positive_count": 0,
-                "negative_count": 0,
-                "neutral_count": 0,
-                "avg_confidence": 0.0,
-                "positive_percentage": 0,
-                "negative_percentage": 0,
-                "neutral_percentage": 0,
-            },
-            message="Database not connected"
-        )
+    default_overview = {
+        "total_analyses": 0,
+        "positive_count": 0,
+        "negative_count": 0,
+        "neutral_count": 0,
+        "avg_confidence": 0.0,
+        "positive_percentage": 0,
+        "negative_percentage": 0,
+        "neutral_percentage": 0,
+    }
 
     try:
+        if db_instance.db is None:
+            return APIResponse(
+                success=True,
+                data=default_overview,
+                message="Operating in stateless mode (no database connected)"
+            )
+
         total = await db_instance.db["predictions"].count_documents({})
         pos_count = await db_instance.db["predictions"].count_documents({"sentiment": "Positive"})
         neg_count = await db_instance.db["predictions"].count_documents({"sentiment": "Negative"})
@@ -53,34 +57,33 @@ async def get_analytics_overview():
             message="Analytics overview computed"
         )
     except Exception as e:
+        logger.warning(f"Analytics overview falling back to stateless: {e}")
         return APIResponse(
             success=True,
-            data={
-                "total_analyses": 0,
-                "positive_count": 0,
-                "negative_count": 0,
-                "neutral_count": 0,
-                "avg_confidence": 0.0,
-                "positive_percentage": 0,
-                "negative_percentage": 0,
-                "neutral_percentage": 0,
-            },
-            message=f"Database query error: {str(e)}"
+            data=default_overview,
+            message=f"Stateless mode active ({str(e)})"
         )
 
 @router.get("/analytics/sentiment", response_model=APIResponse[dict])
 async def get_sentiment_analytics():
     """
-    Returns sentiment breakdown and historical timeline distribution from MongoDB.
+    Returns sentiment breakdown and historical timeline distribution from MongoDB,
+    with graceful stateless fallback when MongoDB is unavailable or unconfigured.
     """
-    if db_instance.db is None:
-        return APIResponse(
-            success=True,
-            data={"distribution": {}, "trend": [], "confidence_distribution": []},
-            message="Database not connected"
-        )
+    default_sentiment = {
+        "distribution": {},
+        "trend": [],
+        "confidence_distribution": []
+    }
 
     try:
+        if db_instance.db is None:
+            return APIResponse(
+                success=True,
+                data=default_sentiment,
+                message="Operating in stateless mode (no database connected)"
+            )
+
         # Group by sentiment
         dist_pipeline = [
             {"$group": {"_id": "$sentiment", "count": {"$sum": 1}}}
@@ -163,25 +166,26 @@ async def get_sentiment_analytics():
             message="Sentiment analytics fetched"
         )
     except Exception as e:
+        logger.warning(f"Sentiment analytics falling back to stateless: {e}")
         return APIResponse(
             success=True,
-            data={"distribution": {}, "trend": [], "confidence_distribution": []},
-            message=f"Database error: {str(e)}"
+            data=default_sentiment,
+            message=f"Stateless mode active ({str(e)})"
         )
 
 @router.get("/analytics/emotions", response_model=APIResponse[dict])
 async def get_emotion_analytics():
     """
-    Returns aggregated emotion classification statistics from MongoDB.
+    Returns aggregated emotion classification statistics from MongoDB, with graceful stateless fallback.
     """
-    if db_instance.db is None:
-        return APIResponse(
-            success=True,
-            data={"emotions": []},
-            message="Database not connected"
-        )
-
     try:
+        if db_instance.db is None:
+            return APIResponse(
+                success=True,
+                data={"emotions": []},
+                message="Operating in stateless mode (no database connected)"
+            )
+
         pipeline = [
             {"$group": {"_id": "$emotion", "count": {"$sum": 1}, "avg_confidence": {"$avg": "$confidence"}}},
             {"$sort": {"count": -1}}
@@ -202,25 +206,26 @@ async def get_emotion_analytics():
             message="Emotion analytics fetched"
         )
     except Exception as e:
+        logger.warning(f"Emotion analytics falling back to stateless: {e}")
         return APIResponse(
             success=True,
             data={"emotions": []},
-            message=f"Database error: {str(e)}"
+            message=f"Stateless mode active ({str(e)})"
         )
 
 @router.get("/analytics/aspects", response_model=APIResponse[dict])
 async def get_aspect_analytics():
     """
-    Returns aggregated aspect-based sentiment data from MongoDB.
+    Returns aggregated aspect-based sentiment data from MongoDB, with graceful stateless fallback.
     """
-    if db_instance.db is None:
-        return APIResponse(
-            success=True,
-            data={"aspects": []},
-            message="Database not connected"
-        )
-
     try:
+        if db_instance.db is None:
+            return APIResponse(
+                success=True,
+                data={"aspects": []},
+                message="Operating in stateless mode (no database connected)"
+            )
+
         pipeline = [
             {"$unwind": "$aspects"},
             {
@@ -255,8 +260,9 @@ async def get_aspect_analytics():
             message="Aspect analytics fetched"
         )
     except Exception as e:
+        logger.warning(f"Aspect analytics falling back to stateless: {e}")
         return APIResponse(
             success=True,
             data={"aspects": []},
-            message=f"Database error: {str(e)}"
+            message=f"Stateless mode active ({str(e)})"
         )

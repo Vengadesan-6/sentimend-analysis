@@ -104,7 +104,7 @@ async def get_prediction_by_id(pred_id: str):
     Fetch single prediction details.
     """
     if db_instance.db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+        raise HTTPException(status_code=503, detail="Database not available in stateless mode")
 
     try:
         obj_id = ObjectId(pred_id)
@@ -133,7 +133,7 @@ async def delete_prediction(pred_id: str):
     Delete a single prediction record by ID.
     """
     if db_instance.db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+        raise HTTPException(status_code=503, detail="Database not available in stateless mode")
 
     try:
         obj_id = ObjectId(pred_id)
@@ -157,7 +157,7 @@ async def clear_all_predictions():
     Clear all prediction records from MongoDB.
     """
     if db_instance.db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+        raise HTTPException(status_code=503, detail="Database not available in stateless mode")
 
     res = await db_instance.db["predictions"].delete_many({})
     return APIResponse(

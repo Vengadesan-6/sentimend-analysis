@@ -233,7 +233,7 @@ async def download_bulk_results(dataset_id: str):
     Streams CSV download of analyzed bulk results with sentiment, emotion, and confidence.
     """
     if db_instance.db is None:
-        raise HTTPException(status_code=500, detail="Database connection unavailable.")
+        raise HTTPException(status_code=503, detail="Database connection unavailable in stateless mode.")
 
     cursor = db_instance.db["predictions"].find({"dataset_id": dataset_id})
     records = await cursor.to_list(length=10000)
