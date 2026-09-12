@@ -45,13 +45,9 @@ class AspectSentimentEngine:
             # Strategy 1: Dependency parsing & noun chunks
             if hasattr(doc, "noun_chunks") and doc.has_annotation("DEP"):
                 for chunk in doc.noun_chunks:
-                    # Filter out pure pronouns or stopwords
                     clean_chunk = chunk.text.strip().lower()
                     if chunk.root.pos_ in ["NOUN", "PROPN"] and len(clean_chunk) > 2 and clean_chunk not in ["it", "this", "that", "they", "we", "i", "you"]:
-                        # Find supporting span (the sentence or modifier subclause containing the aspect)
                         sent_span = chunk.sent.text.strip()
-                        
-                        # Extract surrounding modifier tokens
                         modifiers = [w.text for w in chunk.root.children if w.pos_ in ["ADJ", "ADV", "VERB"]]
                         aspect_name = chunk.text.strip()
                         
@@ -63,7 +59,6 @@ class AspectSentimentEngine:
                                 "modifiers": modifiers
                             })
             else:
-                # Fallback for lightweight rule-based sentence segmentation & noun candidate extraction
                 for sent in doc.sents:
                     words = re.findall(r'\b[A-Za-z]{3,}\b', sent.text)
                     for w in words:
@@ -76,7 +71,6 @@ class AspectSentimentEngine:
                                     "modifiers": []
                                 })
         else:
-            # Complete fallback without Spacy
             sentences = re.split(r'(?<=[.!?]) +', text)
             for sent in sentences:
                 words = re.findall(r'\b[A-Za-z]{3,}\b', sent)
@@ -95,10 +89,10 @@ class AspectSentimentEngine:
     def analyze_aspects(self, text: str, sentiment_engine: SentimentTransformerEngine) -> List[Dict]:
         """
         Performs full ABSA on input text, returning aspect term, sentiment, confidence, and context span.
+        Uses batched inference on aspect context spans for maximum speed and minimal memory allocations.
         """
         candidates = self.extract_aspect_candidates(text)
         if not candidates:
-            # If no explicit aspect target found, provide general text aspect
             main_pred = sentiment_engine.predict_single(text)
             return [{
                 "aspect": "Overall Experience",
@@ -107,19 +101,17 @@ class AspectSentimentEngine:
                 "supporting_span": text[:150] + ("..." if len(text) > 150 else "")
             }]
 
+        cand_subset = candidates[:4]
+        spans = [cand["span"] for cand in cand_subset]
+        preds = sentiment_engine.predict_batch(spans)
+
         results = []
-        for cand in candidates[:6]:  # Limit to top 6 relevant aspects per text
-            span_text = cand["span"]
-            aspect_name = cand["aspect"]
-            
-            # Predict sentiment on the aspect's contextual supporting span
-            pred = sentiment_engine.predict_single(span_text)
-            
+        for cand, pred in zip(cand_subset, preds):
             results.append({
-                "aspect": aspect_name.title(),
+                "aspect": cand["aspect"].title(),
                 "sentiment": pred["sentiment"],
                 "confidence": pred["confidence"],
-                "supporting_span": span_text
+                "supporting_span": cand["span"]
             })
 
         return results

@@ -38,11 +38,14 @@ async def predict_single_text(payload: SinglePredictionRequest):
 
     pipeline = SentimentIntelligencePipeline.get_instance()
     
-    # Run real transformer inference
-    result = pipeline.analyze_single(
-        text=payload.text,
-        model_name=target_model,
-        include_xai=payload.include_xai
+    # Run real transformer inference in a separate thread to prevent blocking the ASGI event loop.
+    # Blocking the event loop causes Render's health checks to time out, leading to forced restarts.
+    from starlette.concurrency import run_in_threadpool
+    result = await run_in_threadpool(
+        pipeline.analyze_single,
+        payload.text,
+        target_model,
+        payload.include_xai
     )
 
     logger.info(
@@ -147,8 +150,13 @@ async def bulk_csv_analysis(
     start_time = time.perf_counter()
     pipeline = SentimentIntelligencePipeline.get_instance()
     
-    # Run batched inference
-    batch_results = pipeline.analyze_batch(texts, model_name=model_name)
+    # Run batched inference in thread pool to prevent ASGI event loop blocking
+    from starlette.concurrency import run_in_threadpool
+    batch_results = await run_in_threadpool(
+        pipeline.analyze_batch,
+        texts,
+        model_name
+    )
     total_time_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
 
     # Compute bulk metrics

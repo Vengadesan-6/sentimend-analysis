@@ -1,11 +1,27 @@
 import time
+import gc
+import torch
 from typing import Dict, List, Optional
 from ml.preprocess import clean_text
+
+# Crucial for CPU servers (Render):
+# Prevent PyTorch from spawning excess threads that inflate memory and cause CPU contention.
+torch.set_num_threads(1)
+
+def cleanup_memory():
+    """Forces Python garbage collection and OS memory release via malloc_trim."""
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 class SentimentIntelligencePipeline:
     """
     Unified Pipeline orchestrating Sentiment, Emotion, ABSA, and Explainable AI.
-    Loads transformer models lazily on first prediction request to ensure instant startup.
+    Loads transformer models lazily and optimizes memory execution order to ensure
+    FastAPI service stability and zero OOM kills on 512MB RAM servers.
     """
     _instance = None
 
@@ -52,6 +68,7 @@ class SentimentIntelligencePipeline:
     def analyze_single(self, text: str, model_name: Optional[str] = None, include_xai: bool = True) -> Dict:
         """
         Complete end-to-end analysis for a single text.
+        Executes Sentiment -> ABSA -> XAI, followed by Emotion detection.
         """
         start_time = time.perf_counter()
         cleaned = clean_text(text)
@@ -65,16 +82,17 @@ class SentimentIntelligencePipeline:
 
         sent_res = sent_engine.predict_single(cleaned)
         
-        # 2. Emotion Engine
-        emotion_res = self.emotion_engine.predict_single(cleaned)
-        
-        # 3. ABSA Engine
+        # 2. ABSA Engine (uses sentiment engine)
         aspects = self.absa_engine.analyze_aspects(cleaned, sent_engine)
         
-        # 4. Explainable AI
+        # 3. Explainable AI (uses sentiment engine)
         explanation = self.xai_engine.explain(cleaned, sent_engine) if include_xai else None
         
+        # 4. Emotion Engine
+        emotion_res = self.emotion_engine.predict_single(cleaned)
+        
         total_time_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
+        cleanup_memory()
         
         return {
             "text": text,
@@ -126,6 +144,7 @@ class SentimentIntelligencePipeline:
                 "processing_time_ms": s_item.get("processing_time_ms", 10.0)
             })
             
+        cleanup_memory()
         return results
 
 if __name__ == "__main__":

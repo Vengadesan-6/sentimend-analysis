@@ -4,9 +4,19 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from typing import List, Dict, Union, Optional
 import time
 import logging
+import gc
 from ml.config import ml_config
 
 logger = logging.getLogger(__name__)
+
+def cleanup_memory():
+    """Forces Python garbage collection and OS memory release via malloc_trim."""
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 class SentimentTransformerEngine:
     """
@@ -31,8 +41,9 @@ class SentimentTransformerEngine:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Initializing SentimentTransformerEngine on device: {self.device} for model: {self.model_name}")
         
+        dtype = torch.bfloat16 if hasattr(torch, "bfloat16") else torch.float32
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name, torch_dtype=dtype)
         self.model.to(self.device)
         self.model.eval()
         self.model.requires_grad_(False)
@@ -40,13 +51,22 @@ class SentimentTransformerEngine:
         # Determine model output mapping
         self.id2label = self.model.config.id2label
         logger.info(f"Model [{self.model_name}] loaded successfully with labels: {self.id2label}")
+        cleanup_memory()
 
     @classmethod
     def get_instance(cls, model_name: Optional[str] = None) -> "SentimentTransformerEngine":
         raw_name = model_name or ml_config.sentiment_model_name
         resolved_name = cls.MODEL_ALIASES.get(raw_name.lower().strip() if raw_name else "", raw_name)
+        
         if resolved_name not in cls._instances:
+            # Free memory of previous models to prevent OOM on 512MB RAM servers
+            if cls._instances:
+                logger.info("Clearing previous sentiment models from memory to prevent OOM")
+                cls._instances.clear()
+                cleanup_memory()
+                
             cls._instances[resolved_name] = cls(resolved_name)
+            
         return cls._instances[resolved_name]
 
     def _normalize_sentiment(self, raw_label: str) -> str:
@@ -103,7 +123,12 @@ class SentimentTransformerEngine:
             
             outputs = self.model(**encoded)
             logits = outputs.logits
-            probs = F.softmax(logits, dim=-1).cpu().numpy()
+            probs = F.softmax(logits.float(), dim=-1).cpu().numpy()
+            
+            # Prevent OOM by releasing tensors immediately
+            del outputs
+            del logits
+            del encoded
 
             for idx, prob_array in enumerate(probs):
                 # Calculate class breakdown by summing probability mass across mapped labels
@@ -148,4 +173,5 @@ class SentimentTransformerEngine:
         for res in all_results:
             res["processing_time_ms"] = per_item_time
 
+        cleanup_memory()
         return all_results

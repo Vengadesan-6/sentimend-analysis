@@ -4,9 +4,19 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from typing import List, Dict, Optional
 import time
 import logging
+import gc
 from ml.config import ml_config
 
 logger = logging.getLogger(__name__)
+
+def cleanup_memory():
+    """Forces Python garbage collection and OS memory release via malloc_trim."""
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 class EmotionTransformerEngine:
     """
@@ -20,18 +30,26 @@ class EmotionTransformerEngine:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Initializing EmotionTransformerEngine on device: {self.device} for model: {model_name}")
         
+        dtype = torch.bfloat16 if hasattr(torch, "bfloat16") else torch.float32
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, torch_dtype=dtype)
         self.model.to(self.device)
         self.model.eval()
         self.model.requires_grad_(False)
         self.id2label = self.model.config.id2label
+        cleanup_memory()
 
     @classmethod
     def get_instance(cls) -> "EmotionTransformerEngine":
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    @classmethod
+    def clear_instance(cls):
+        if cls._instance is not None:
+            cls._instance = None
+            cleanup_memory()
 
     @torch.inference_mode()
     def predict_single(self, text: str) -> Dict:
@@ -56,7 +74,10 @@ class EmotionTransformerEngine:
             encoded = {k: v.to(self.device) for k, v in encoded.items()}
             
             outputs = self.model(**encoded)
-            probs = F.softmax(outputs.logits, dim=-1).cpu().numpy()
+            probs = F.softmax(outputs.logits.float(), dim=-1).cpu().numpy()
+            
+            del outputs
+            del encoded
 
             for idx, prob_array in enumerate(probs):
                 raw_scores = {}
@@ -73,4 +94,5 @@ class EmotionTransformerEngine:
                     "probabilities": raw_scores
                 })
 
+        cleanup_memory()
         return all_results

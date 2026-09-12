@@ -2,8 +2,17 @@ import torch
 import numpy as np
 from typing import List, Dict, Tuple
 import logging
+import gc
 
 logger = logging.getLogger(__name__)
+
+def cleanup_memory():
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 class ExplainableAIEngine:
     """
@@ -63,14 +72,22 @@ class ExplainableAIEngine:
 
         # Saliency = Norm of gradients across embedding dimension
         grads = inputs_embeds.grad[0] # (seq_len, hidden_dim)
-        attribution = torch.sum(grads * inputs_embeds[0], dim=-1).detach().cpu().numpy()
+        attribution = torch.sum(grads * inputs_embeds[0], dim=-1).float().detach().cpu().numpy()
         
-        # Immediately release gradient tensors to minimize RAM
+        # Immediately release all gradient and graph tensors
+        del outputs
+        del logits
+        del target_logit
+        del grads
         inputs_embeds.grad = None
+        del inputs_embeds
+        del inputs
         model.zero_grad(set_to_none=True)
 
         # Decode tokens
         raw_tokens = tokenizer.convert_ids_to_tokens(input_ids[0].cpu().numpy())
+        del input_ids
+        del attention_mask
         
         # Clean tokens and align scores
         cleaned_tokens = []
@@ -100,6 +117,8 @@ class ExplainableAIEngine:
         
         pos_words = [t for t, s in sorted(token_score_pairs, key=lambda x: x[1], reverse=True) if s > 0.2][:5]
         neg_words = [t for t, s in sorted(token_score_pairs, key=lambda x: x[1]) if s < -0.2][:5]
+
+        cleanup_memory()
 
         return {
             "method": "Model-based Gradient Saliency & Attention Attribution",
