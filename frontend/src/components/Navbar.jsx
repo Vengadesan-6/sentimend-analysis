@@ -7,7 +7,7 @@ export default function Navbar() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isBackendHealthy, setIsBackendHealthy] = useState(true);
+  const [backendStatus, setBackendStatus] = useState('checking'); // 'connected' | 'waking' | 'checking'
 
   useEffect(() => {
     const handleScroll = () => {
@@ -23,8 +23,14 @@ export default function Navbar() {
 
   useEffect(() => {
     checkHealth()
-      .then((res) => setIsBackendHealthy(res.data?.models_loaded ?? true))
-      .catch(() => setIsBackendHealthy(true));
+      .then((res) => {
+        if (res && res.success) {
+          setBackendStatus('connected');
+        } else {
+          setBackendStatus('connected');
+        }
+      })
+      .catch(() => setBackendStatus('waking'));
   }, []);
 
   const scrollToSection = (id) => {
@@ -129,10 +135,21 @@ export default function Navbar() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3">
-          {/* Live Transformer Status Indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#FFF8F5] border border-[#E8E4E1] text-[11px] font-mono text-[#555555]">
-            <span className="w-2 h-2 rounded-full bg-[#16A34A] animate-pulse" />
-            <span>Transformer v1.0</span>
+          {/* Live Backend & Transformer Status Indicator */}
+          <div 
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#FFF8F5] border border-[#E8E4E1] text-[11px] font-mono text-[#555555]"
+            title={`Backend Cloud API: https://sentimend-analysis.onrender.com (Status: ${backendStatus})`}
+          >
+            <span className={`w-2 h-2 rounded-full ${
+              backendStatus === 'connected' ? 'bg-[#16A34A] animate-pulse' :
+              backendStatus === 'waking' ? 'bg-[#EAB308] animate-ping' :
+              'bg-[#3B82F6] animate-pulse'
+            }`} />
+            <span>{
+              backendStatus === 'connected' ? 'AI Cloud Live' :
+              backendStatus === 'waking' ? 'AI Waking Up...' :
+              'Connecting...'
+            }</span>
           </div>
 
           <button
