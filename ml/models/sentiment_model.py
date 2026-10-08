@@ -28,10 +28,13 @@ class SentimentTransformerEngine:
 
     MODEL_ALIASES = {
         "roberta": "cardiffnlp/twitter-roberta-base-sentiment-latest",
+        "twitter-roberta": "cardiffnlp/twitter-roberta-base-sentiment-latest",
         "cardiffnlp/twitter-roberta-base-sentiment-latest": "cardiffnlp/twitter-roberta-base-sentiment-latest",
         "distilbert": "distilbert-base-uncased-finetuned-sst-2-english",
+        "sst-2": "distilbert-base-uncased-finetuned-sst-2-english",
         "distilbert-base-uncased-finetuned-sst-2-english": "distilbert-base-uncased-finetuned-sst-2-english",
         "bert": "nlptown/bert-base-multilingual-uncased-sentiment",
+        "bert-multilingual": "nlptown/bert-base-multilingual-uncased-sentiment",
         "nlptown/bert-base-multilingual-uncased-sentiment": "nlptown/bert-base-multilingual-uncased-sentiment",
     }
 
@@ -41,15 +44,15 @@ class SentimentTransformerEngine:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Initializing SentimentTransformerEngine on device: {self.device} for model: {self.model_name}")
         
-        dtype = torch.bfloat16 if hasattr(torch, "bfloat16") else torch.float32
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name, torch_dtype=dtype)
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
         self.model.to(self.device)
         self.model.eval()
-        self.model.requires_grad_(False)
+        for param in self.model.parameters():
+            param.requires_grad = False
         
         # Determine model output mapping
-        self.id2label = self.model.config.id2label
+        self.id2label = getattr(self.model.config, "id2label", {0: "Negative", 1: "Neutral", 2: "Positive"})
         logger.info(f"Model [{self.model_name}] loaded successfully with labels: {self.id2label}")
         cleanup_memory()
 
@@ -65,7 +68,15 @@ class SentimentTransformerEngine:
                 cls._instances.clear()
                 cleanup_memory()
                 
-            cls._instances[resolved_name] = cls(resolved_name)
+            try:
+                cls._instances[resolved_name] = cls(resolved_name)
+            except Exception as e:
+                logger.warning(f"Failed to load requested model [{resolved_name}]: {e}. Falling back to default.")
+                default_name = ml_config.sentiment_model_name
+                if default_name in cls._instances:
+                    return cls._instances[default_name]
+                cls._instances[default_name] = cls(default_name)
+                return cls._instances[default_name]
             
         return cls._instances[resolved_name]
 
@@ -91,87 +102,89 @@ class SentimentTransformerEngine:
             return "Positive"
         return "Neutral"
 
-    @torch.inference_mode()
     def predict_single(self, text: str) -> Dict:
         """
-        Runs inference on a single text string.
+        Runs inference on a single text string safely using eval() and torch.no_grad().
         """
-        results = self.predict_batch([text])
-        return results[0]
+        with torch.no_grad():
+            self.model.eval()
+            results = self.predict_batch([text])
+            return results[0]
 
-    @torch.inference_mode()
     def predict_batch(self, texts: List[str], batch_size: int = ml_config.eval_batch_size) -> List[Dict]:
         """
-        Runs true batched tensor inference with PyTorch inference mode.
+        Runs true batched tensor inference with PyTorch torch.no_grad() and eval().
         """
         if not texts:
             return []
 
-        all_results = []
-        start_time = time.perf_counter()
+        self.model.eval()
+        with torch.no_grad():
+            all_results = []
+            start_time = time.perf_counter()
 
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i + batch_size]
-            encoded = self.tokenizer(
-                batch_texts,
-                padding=True,
-                truncation=True,
-                max_length=ml_config.max_length,
-                return_tensors="pt"
-            )
-            encoded = {k: v.to(self.device) for k, v in encoded.items()}
-            
-            outputs = self.model(**encoded)
-            logits = outputs.logits
-            probs = F.softmax(logits.float(), dim=-1).cpu().numpy()
-            
-            # Prevent OOM by releasing tensors immediately
-            del outputs
-            del logits
-            del encoded
-
-            for idx, prob_array in enumerate(probs):
-                # Calculate class breakdown by summing probability mass across mapped labels
-                class_probs = {"Positive": 0.0, "Neutral": 0.0, "Negative": 0.0}
-                for class_idx, p in enumerate(prob_array):
-                    raw_label = self.id2label.get(class_idx, f"LABEL_{class_idx}")
-                    norm_label = self._normalize_sentiment(raw_label)
-                    class_probs[norm_label] = class_probs.get(norm_label, 0.0) + float(p)
-
-                # Standardize probabilities across 3 canonical classes
-                pos_p = class_probs.get("Positive", 0.0)
-                neg_p = class_probs.get("Negative", 0.0)
-                neu_p = class_probs.get("Neutral", 0.0)
-                total = pos_p + neg_p + neu_p or 1.0
-
-                normalized_probs = {
-                    "Positive": round(pos_p / total, 4),
-                    "Neutral": round(neu_p / total, 4),
-                    "Negative": round(neg_p / total, 4)
-                }
-
-                # Top predicted sentiment & confidence from actual model probability
-                predicted_sentiment = max(normalized_probs, key=lambda k: normalized_probs[k])
-                confidence = normalized_probs[predicted_sentiment]
-
-                logger.debug(
-                    f"Inference complete on [{self.model_name}] for text: '{batch_texts[idx][:40]}...' -> "
-                    f"Sentiment: {predicted_sentiment}, Confidence: {confidence}, Probabilities: {normalized_probs}"
+            for i in range(0, len(texts), batch_size):
+                batch_texts = texts[i:i + batch_size]
+                encoded = self.tokenizer(
+                    batch_texts,
+                    padding=True,
+                    truncation=True,
+                    max_length=ml_config.max_length,
+                    return_tensors="pt"
                 )
+                encoded = {k: v.to(self.device) for k, v in encoded.items()}
+                
+                outputs = self.model(**encoded)
+                logits = outputs.logits
+                probs = F.softmax(logits.float(), dim=-1).cpu().numpy()
+                
+                # Prevent OOM by releasing tensors immediately
+                del outputs
+                del logits
+                del encoded
 
-                all_results.append({
-                    "text": batch_texts[idx],
-                    "sentiment": predicted_sentiment,
-                    "confidence": confidence,
-                    "probabilities": normalized_probs,
-                    "model_name": self.model_name
-                })
+                for idx, prob_array in enumerate(probs):
+                    # Calculate class breakdown by summing probability mass across mapped labels
+                    class_probs = {"Positive": 0.0, "Neutral": 0.0, "Negative": 0.0}
+                    for class_idx, p in enumerate(prob_array):
+                        raw_label = self.id2label.get(class_idx, f"LABEL_{class_idx}")
+                        norm_label = self._normalize_sentiment(raw_label)
+                        class_probs[norm_label] = class_probs.get(norm_label, 0.0) + float(p)
 
-        total_time = (time.perf_counter() - start_time) * 1000.0
-        per_item_time = round(total_time / len(texts), 2)
-        
-        for res in all_results:
-            res["processing_time_ms"] = per_item_time
+                    # Standardize probabilities across 3 canonical classes
+                    pos_p = class_probs.get("Positive", 0.0)
+                    neg_p = class_probs.get("Negative", 0.0)
+                    neu_p = class_probs.get("Neutral", 0.0)
+                    total = pos_p + neg_p + neu_p or 1.0
 
-        cleanup_memory()
-        return all_results
+                    normalized_probs = {
+                        "Positive": round(pos_p / total, 4),
+                        "Neutral": round(neu_p / total, 4),
+                        "Negative": round(neg_p / total, 4)
+                    }
+
+                    # Top predicted sentiment & confidence from actual model probability
+                    predicted_sentiment = max(normalized_probs, key=lambda k: normalized_probs[k])
+                    confidence = normalized_probs[predicted_sentiment]
+
+                    logger.debug(
+                        f"Inference complete on [{self.model_name}] for text: '{batch_texts[idx][:40]}...' -> "
+                        f"Sentiment: {predicted_sentiment}, Confidence: {confidence}, Probabilities: {normalized_probs}"
+                    )
+
+                    all_results.append({
+                        "text": batch_texts[idx],
+                        "sentiment": predicted_sentiment,
+                        "confidence": confidence,
+                        "probabilities": normalized_probs,
+                        "model_name": self.model_name
+                    })
+
+            total_time = (time.perf_counter() - start_time) * 1000.0
+            per_item_time = round(total_time / len(texts), 2)
+            
+            for res in all_results:
+                res["processing_time_ms"] = per_item_time
+
+            cleanup_memory()
+            return all_results

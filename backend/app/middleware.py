@@ -24,11 +24,20 @@ class LoggingAndTimingMiddleware(BaseHTTPMiddleware):
         except Exception as exc:
             process_time = (time.perf_counter() - start_time) * 1000.0
             logger.error(f"Unhandled Exception on {request.method} {request.url.path}: {str(exc)}", exc_info=True)
+            origin = request.headers.get("origin", "*")
+            headers = {
+                "X-Process-Time-MS": str(round(process_time, 2)),
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                "Access-Control-Allow-Headers": "*",
+            }
             return JSONResponse(
                 status_code=500,
                 content={
                     "success": False,
                     "message": f"An internal server error occurred: {str(exc)}",
                     "data": None
-                }
+                },
+                headers=headers
             )

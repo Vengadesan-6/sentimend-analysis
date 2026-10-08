@@ -7,6 +7,9 @@ from backend.app.database import db_instance
 router = APIRouter()
 
 @router.get("/health", response_model=APIResponse[dict])
+@router.get("/health/", response_model=APIResponse[dict])
+@router.get("/api/health", response_model=APIResponse[dict])
+@router.get("/api/health/", response_model=APIResponse[dict])
 async def health_check():
     """
     Returns live health status of API and platform components without blocking or loading heavy models.

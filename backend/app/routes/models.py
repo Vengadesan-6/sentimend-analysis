@@ -5,6 +5,9 @@ from backend.app.database import db_instance
 router = APIRouter()
 
 @router.get("/model-performance", response_model=APIResponse[dict])
+@router.get("/model-performance/", response_model=APIResponse[dict])
+@router.get("/models", response_model=APIResponse[dict])
+@router.get("/models/", response_model=APIResponse[dict])
 async def get_model_performance():
     """
     Returns real model comparison metrics (Accuracy, Precision, Recall, F1, Latency, Confusion Matrix)

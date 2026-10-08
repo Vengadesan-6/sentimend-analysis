@@ -85,6 +85,14 @@ export default function BulkAnalysis() {
     setResult(null);
   };
 
+  const handleReset = () => {
+    setFile(null);
+    setResult(null);
+    setError(null);
+    setUploadProgress(0);
+    setAnalyzing(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) {
@@ -118,6 +126,7 @@ export default function BulkAnalysis() {
     } catch (err) {
       console.error('Batch inference error:', err);
       setError(err.response?.data?.message || err.message || 'CSV batch inference failed on backend.');
+      setUploadProgress(0);
     } finally {
       setAnalyzing(false);
     }

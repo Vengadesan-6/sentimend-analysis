@@ -91,27 +91,36 @@ class AspectSentimentEngine:
         Performs full ABSA on input text, returning aspect term, sentiment, confidence, and context span.
         Uses batched inference on aspect context spans for maximum speed and minimal memory allocations.
         """
-        candidates = self.extract_aspect_candidates(text)
-        if not candidates:
-            main_pred = sentiment_engine.predict_single(text)
+        try:
+            candidates = self.extract_aspect_candidates(text)
+            if not candidates:
+                main_pred = sentiment_engine.predict_single(text)
+                return [{
+                    "aspect": "Overall Experience",
+                    "sentiment": main_pred["sentiment"],
+                    "confidence": main_pred["confidence"],
+                    "supporting_span": text[:150] + ("..." if len(text) > 150 else "")
+                }]
+
+            cand_subset = candidates[:4]
+            spans = [cand["span"] for cand in cand_subset]
+            preds = sentiment_engine.predict_batch(spans)
+
+            results = []
+            for cand, pred in zip(cand_subset, preds):
+                results.append({
+                    "aspect": cand["aspect"].title(),
+                    "sentiment": pred["sentiment"],
+                    "confidence": pred["confidence"],
+                    "supporting_span": cand["span"]
+                })
+
+            return results
+        except Exception as e:
+            logger.warning(f"Aspect analysis fallback triggered ({e}).")
             return [{
                 "aspect": "Overall Experience",
-                "sentiment": main_pred["sentiment"],
-                "confidence": main_pred["confidence"],
-                "supporting_span": text[:150] + ("..." if len(text) > 150 else "")
+                "sentiment": "Neutral",
+                "confidence": 0.5,
+                "supporting_span": text[:150] if text else "N/A"
             }]
-
-        cand_subset = candidates[:4]
-        spans = [cand["span"] for cand in cand_subset]
-        preds = sentiment_engine.predict_batch(spans)
-
-        results = []
-        for cand, pred in zip(cand_subset, preds):
-            results.append({
-                "aspect": cand["aspect"].title(),
-                "sentiment": pred["sentiment"],
-                "confidence": pred["confidence"],
-                "supporting_span": cand["span"]
-            })
-
-        return results

@@ -70,8 +70,17 @@ export default function Analyze() {
         processing_time_ms: data.processing_time_ms || 25.0,
         created_at: data.created_at || new Date().toISOString()
       };
-      localStorage.setItem('sentix_predictions_history', JSON.stringify([newItem, ...cached.filter(c => c.id !== newItem.id)].slice(0, 50)));
+      const updated = [newItem, ...cached.filter(c => c.id !== newItem.id)].slice(0, 50);
+      localStorage.setItem('sentix_predictions_history', JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('sentix_history_updated', { detail: newItem }));
     } catch (e) {}
+  };
+
+  const handleReset = () => {
+    setText('');
+    setResult(null);
+    setError(null);
+    setLoading(false);
   };
 
   const handleAnalyze = async (e) => {
@@ -91,6 +100,7 @@ export default function Analyze() {
 
       if (response && response.success && response.data) {
         setResult(response.data);
+        syncToLocalHistory(response.data);
       } else {
         throw new Error(response?.message || 'Inference returned empty response');
       }
@@ -138,6 +148,7 @@ export default function Analyze() {
               onClick={() => {
                 setText(p.text);
                 setResult(null);
+                setError(null);
               }}
               className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs font-medium text-slate-300 transition-all"
             >
@@ -233,6 +244,18 @@ export default function Analyze() {
                   </>
                 )}
               </button>
+              {(text || result || error) && (
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={loading}
+                  title="Clear input and reset states"
+                  className="py-3 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-300 hover:text-white transition-all flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset</span>
+                </button>
+              )}
             </div>
 
             {error && (

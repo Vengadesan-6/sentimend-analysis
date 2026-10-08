@@ -15,7 +15,7 @@ from backend.app.schemas import (
     PredictionResponseData,
     BulkAnalysisSummary
 )
-from backend.app.database import db_instance
+from backend.app.database import db_instance, persist_prediction
 from ml.inference import SentimentIntelligencePipeline
 
 router = APIRouter()
@@ -25,10 +25,13 @@ logger = logging.getLogger("SentixPredict")
 @router.post("/predict/", response_model=APIResponse[PredictionResponseData])
 @router.post("/sentiment", response_model=APIResponse[PredictionResponseData])
 @router.post("/sentiment/", response_model=APIResponse[PredictionResponseData])
+@router.post("/analyze", response_model=APIResponse[PredictionResponseData])
+@router.post("/analyze/", response_model=APIResponse[PredictionResponseData])
 async def predict_single_text(payload: SinglePredictionRequest):
     """
     Executes real transformer inference on a single text.
-    Persists prediction into MongoDB and returns comprehensive multi-modal sentiment intelligence.
+    Persists prediction into MongoDB (stateless-safe) and returns comprehensive multi-modal sentiment intelligence.
+    Guarantees a 200 OK response with full prediction data even if MongoDB is offline.
     """
     if not payload.text or not payload.text.strip():
         raise HTTPException(status_code=400, detail="Input text cannot be empty.")
@@ -36,17 +39,23 @@ async def predict_single_text(payload: SinglePredictionRequest):
     target_model = payload.model_name or payload.model
     logger.info(f"Incoming prediction request for model [{target_model}] with text: '{payload.text[:60]}...'")
 
-    pipeline = SentimentIntelligencePipeline.get_instance()
-    
-    # Run real transformer inference in a separate thread to prevent blocking the ASGI event loop.
-    # Blocking the event loop causes Render's health checks to time out, leading to forced restarts.
-    from starlette.concurrency import run_in_threadpool
-    result = await run_in_threadpool(
-        pipeline.analyze_single,
-        payload.text,
-        target_model,
-        payload.include_xai
-    )
+    try:
+        pipeline = SentimentIntelligencePipeline.get_instance()
+        
+        # Run real transformer inference in a separate thread to prevent blocking the ASGI event loop.
+        from starlette.concurrency import run_in_threadpool
+        result = await run_in_threadpool(
+            pipeline.analyze_single,
+            payload.text,
+            target_model,
+            payload.include_xai
+        )
+    except Exception as e:
+        logger.error(f"Inference pipeline execution error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Sentiment inference engine encountered an error: {str(e)}"
+        )
 
     logger.info(
         f"Inference result: sentiment={result['sentiment']}, confidence={result['confidence']}, "
@@ -55,7 +64,7 @@ async def predict_single_text(payload: SinglePredictionRequest):
 
     created_at = datetime.utcnow()
 
-    # Save to MongoDB
+    # Save to database (MongoDB + persistent local store)
     doc = {
         "text": result["text"],
         "cleaned_text": result["cleaned_text"],
@@ -67,18 +76,13 @@ async def predict_single_text(payload: SinglePredictionRequest):
         "aspects": result.get("aspects", []),
         "explanation": result.get("explanation"),
         "model_name": result["model_name"],
+        "selected_model": result["model_name"],
         "processing_time_ms": result["processing_time_ms"],
-        "created_at": created_at
+        "created_at": created_at,
+        "timestamp": created_at.isoformat()
     }
 
-    doc_id = None
-    if db_instance.db is not None:
-        try:
-            insert_res = await db_instance.db["predictions"].insert_one(doc)
-            doc_id = str(insert_res.inserted_id)
-        except Exception as e:
-            import logging
-            logging.getLogger("SentixPredict").warning(f"Could not persist prediction to MongoDB: {e}")
+    doc_id = await persist_prediction(doc)
 
     response_data = PredictionResponseData(
         id=doc_id,
@@ -179,35 +183,36 @@ async def bulk_csv_analysis(
         "created_at": datetime.utcnow()
     }
 
-    dataset_id = "temp_id"
-    if db_instance.db is not None:
+    import uuid
+    dataset_id = f"ds_{uuid.uuid4().hex[:12]}"
+    created_at = datetime.utcnow()
+
+    # Persist dataset and predictions
+    if db_instance.client is not None and db_instance._db is not None:
         try:
-            ds_res = await db_instance.db["datasets"].insert_one(dataset_doc)
-            dataset_id = str(ds_res.inserted_id)
-
-            # Bulk insert prediction documents
-            prediction_docs = []
-            created_at = datetime.utcnow()
-            for res in batch_results:
-                prediction_docs.append({
-                    "dataset_id": dataset_id,
-                    "text": res["text"],
-                    "cleaned_text": res["cleaned_text"],
-                    "sentiment": res["sentiment"],
-                    "confidence": res["confidence"],
-                    "probabilities": res["probabilities"],
-                    "emotion": res["emotion"],
-                    "aspects": res.get("aspects", []),
-                    "model_name": res["model_name"],
-                    "processing_time_ms": res.get("processing_time_ms", 10.0),
-                    "created_at": created_at
-                })
-
-            if prediction_docs:
-                await db_instance.db["predictions"].insert_many(prediction_docs)
+            ds_res = await db_instance._db["datasets"].insert_one(dataset_doc)
+            if ds_res and ds_res.inserted_id:
+                dataset_id = str(ds_res.inserted_id)
         except Exception as e:
-            import logging
-            logging.getLogger("SentixPredict").warning(f"Could not persist bulk dataset to MongoDB: {e}")
+            logger.warning(f"Could not persist bulk dataset summary to MongoDB: {e}")
+
+    for res in batch_results:
+        bulk_doc = {
+            "dataset_id": dataset_id,
+            "text": res["text"],
+            "cleaned_text": res["cleaned_text"],
+            "sentiment": res["sentiment"],
+            "confidence": res["confidence"],
+            "probabilities": res["probabilities"],
+            "emotion": res["emotion"],
+            "aspects": res.get("aspects", []),
+            "model_name": res["model_name"],
+            "selected_model": res["model_name"],
+            "processing_time_ms": res.get("processing_time_ms", 10.0),
+            "created_at": created_at,
+            "timestamp": created_at.isoformat()
+        }
+        await persist_prediction(bulk_doc)
 
     return APIResponse(
         success=True,
@@ -235,8 +240,12 @@ async def download_bulk_results(dataset_id: str):
     if db_instance.db is None:
         raise HTTPException(status_code=503, detail="Database connection unavailable in stateless mode.")
 
-    cursor = db_instance.db["predictions"].find({"dataset_id": dataset_id})
-    records = await cursor.to_list(length=10000)
+    try:
+        cursor = db_instance.db["predictions"].find({"dataset_id": dataset_id})
+        records = await cursor.to_list(length=10000)
+    except Exception as e:
+        logger.warning(f"Error querying bulk dataset download: {e}")
+        records = []
 
     if not records:
         raise HTTPException(status_code=404, detail="Dataset records not found.")

@@ -5,23 +5,49 @@ export const RENDER_BACKEND_URL = 'https://sentimend-analysis.onrender.com';
 /**
  * Dynamically resolves the API base URL.
  * Priority:
- * 1. import.meta.env.VITE_API_URL or VITE_BACKEND_URL if explicitly defined
- * 2. In browser environments: '/api' (routes through Vite proxy in dev, or Vercel rewrite in prod)
- * 3. Fallback: 'http://127.0.0.1:8000/api'
+ * 1. In production (e.g. deployed on Vercel, remote host):
+ *    - Never connect to localhost or 127.0.0.1.
+ *    - Use explicit remote URL or '/api' (proxied via vercel.json rewrite to Render).
+ * 2. In local development:
+ *    - Use '/api' (proxied via Vite dev server) or local backend URL.
  */
 export const getApiBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL;
-  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
-    const trimmed = envUrl.trim().replace(/\/+$/, '');
-    if (trimmed.startsWith('/')) {
-      return trimmed;
+  const isBrowser = typeof window !== 'undefined';
+  const isLocalhost = isBrowser && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '0.0.0.0'
+  );
+
+  const rawEnv = (import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || '').trim();
+
+  // On production domains (e.g. *.vercel.app, live sites):
+  if (isBrowser && !isLocalhost) {
+    // Strictly sanitize: ignore any config that points to localhost/127.0.0.1
+    if (rawEnv && !rawEnv.includes('localhost') && !rawEnv.includes('127.0.0.1') && !rawEnv.includes('0.0.0.0')) {
+      const clean = rawEnv.replace(/\/+$/, '');
+      if (clean.startsWith('/')) {
+        return clean;
+      }
+      return clean.endsWith('/api') ? clean : `${clean}/api`;
     }
-    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
-  }
-  // In browser environments: '/api' leverages Vite proxy in dev, or Vercel proxy rewrite in prod
-  if (typeof window !== 'undefined') {
+    // Default in Vercel production: '/api' transparently rewrites to Render backend via vercel.json
     return '/api';
   }
+
+  // Local development or SSR:
+  if (rawEnv) {
+    const clean = rawEnv.replace(/\/+$/, '');
+    if (clean.startsWith('/')) {
+      return clean;
+    }
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
+  }
+
+  if (isLocalhost) {
+    return '/api';
+  }
+
   return 'http://127.0.0.1:8000/api';
 };
 
@@ -35,15 +61,15 @@ const api = axios.create({
   },
 });
 
-// Response interceptor with auto-fallback for Vercel 502/504 proxy timeouts
+// Response interceptor with auto-fallback for Vercel proxy timeouts / errors
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const config = error.config;
-    const isProxyTimeout = error.response && [502, 503, 504].includes(error.response.status);
+    const isProxyTimeout = error.response && [500, 502, 503, 504].includes(error.response.status);
     const isNetworkError = !error.response && (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error'));
 
-    // If using relative '/api' on a live deployed domain (e.g. Vercel) and the proxy timed out or dropped:
+    // If using relative '/api' on a live deployed domain (e.g. Vercel) and the proxy failed:
     // Retry ONCE directly against the live Render backend URL
     if (
       config &&
@@ -57,7 +83,7 @@ api.interceptors.response.use(
       config._isRetry = true;
       const targetPath = config.url?.startsWith('/') ? config.url : `/${config.url || ''}`;
       const directUrl = `${RENDER_BACKEND_URL}/api${targetPath}`;
-      console.warn(`[Vercel Proxy Fallback] Relative proxy timed out or returned ${error.response?.status || 'Network Error'}. Retrying directly against ${directUrl}...`);
+      console.warn(`[Vercel Proxy Fallback] Request failed (${error.response?.status || 'Network Error'}). Retrying directly against ${directUrl}...`);
       
       try {
         const retryResponse = await axios({

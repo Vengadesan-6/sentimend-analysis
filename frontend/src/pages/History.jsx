@@ -11,7 +11,8 @@ import {
   Sparkles,
   AlertTriangle,
   X,
-  RefreshCw
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import { getPredictions, deletePrediction, clearPredictions } from '../services/api';
 import SentimentBadge from '../components/SentimentBadge';
@@ -30,6 +31,7 @@ export default function History() {
   const [emotionFilter, setEmotionFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [dbStatus, setDbStatus] = useState({ isConnected: true, message: null });
   const [inspectItem, setInspectItem] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [clearing, setClearing] = useState(false);
@@ -49,12 +51,52 @@ export default function History() {
       });
 
       if (res && res.data) {
-        setPredictions(res.data.items || []);
-        setTotal(res.data.total || 0);
-        setTotalPages(res.data.total_pages || 1);
+        let items = res.data.items || [];
+        const isMongoConnected =
+          res.data.mongodb_connected !== undefined
+            ? Boolean(res.data.mongodb_connected)
+            : res.data.database_status !== 'offline';
+
+        const dbMsg =
+          res.message ||
+          (!isMongoConnected
+            ? 'MongoDB is currently unavailable. Displaying persistent local audit trail.'
+            : null);
+
+        setDbStatus({
+          isConnected: isMongoConnected,
+          message: dbMsg
+        });
+
+        // If backend returned empty list, check if there are cached predictions in localStorage
+        if (items.length === 0) {
+          try {
+            const cached = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
+            if (cached.length > 0) {
+              items = cached;
+            }
+          } catch (e) {}
+        }
+
+        setPredictions(items);
+        setTotal(res.data.total !== undefined && res.data.total > 0 ? res.data.total : items.length);
+        setTotalPages(res.data.total_pages || Math.max(1, Math.ceil(items.length / limit)));
       }
     } catch (err) {
       console.error('Failed to fetch prediction history:', err);
+      // Fallback to locally cached history on network/backend error
+      try {
+        const cached = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
+        if (cached.length > 0) {
+          setPredictions(cached);
+          setTotal(cached.length);
+          setTotalPages(Math.max(1, Math.ceil(cached.length / limit)));
+        }
+      } catch (e) {}
+      setDbStatus({
+        isConnected: false,
+        message: 'MongoDB is currently unavailable. Displaying local prediction audit trail.'
+      });
       setError(err.response?.data?.message || err.message || 'Error loading history records.');
     } finally {
       setLoading(false);
@@ -63,6 +105,19 @@ export default function History() {
 
   useEffect(() => {
     fetchHistory();
+
+    // Listen for custom prediction events so History updates immediately when an analysis completes
+    const handleHistoryUpdate = () => {
+      fetchHistory();
+    };
+
+    window.addEventListener('sentix_history_updated', handleHistoryUpdate);
+    window.addEventListener('storage', handleHistoryUpdate);
+
+    return () => {
+      window.removeEventListener('sentix_history_updated', handleHistoryUpdate);
+      window.removeEventListener('storage', handleHistoryUpdate);
+    };
   }, [page, sentimentFilter, emotionFilter]);
 
   const handleSearchSubmit = (e) => {
@@ -80,6 +135,13 @@ export default function History() {
       setPredictions((prev) => prev.filter((p) => p.id !== id));
       setTotal((prev) => Math.max(0, prev - 1));
       if (inspectItem?.id === id) setInspectItem(null);
+      try {
+        const cached = JSON.parse(localStorage.getItem('sentix_predictions_history') || '[]');
+        localStorage.setItem(
+          'sentix_predictions_history',
+          JSON.stringify(cached.filter((c) => c.id !== id))
+        );
+      } catch (e) {}
     } catch (err) {
       console.error('Failed to delete prediction record:', err);
       alert('Could not delete record: ' + (err.response?.data?.message || err.message));
@@ -89,7 +151,12 @@ export default function History() {
   };
 
   const handleClearAll = async () => {
-    if (!window.confirm('Are you sure you want to clear ALL historical prediction records from MongoDB? This cannot be undone.')) return;
+    if (
+      !window.confirm(
+        'Are you sure you want to clear ALL historical prediction records? This cannot be undone.'
+      )
+    )
+      return;
 
     setClearing(true);
     try {
@@ -98,6 +165,9 @@ export default function History() {
       setTotal(0);
       setTotalPages(1);
       setInspectItem(null);
+      try {
+        localStorage.removeItem('sentix_predictions_history');
+      } catch (e) {}
     } catch (err) {
       console.error('Failed to clear predictions:', err);
       alert('Could not clear records: ' + (err.response?.data?.message || err.message));
@@ -118,7 +188,7 @@ export default function History() {
             <span>Prediction Audit Trail</span>
           </h2>
           <p className="text-xs text-[#555555] mt-1">
-            Browse, filter, inspect, and manage historical inferences stored directly in MongoDB.
+            Browse, filter, inspect, and manage historical inferences stored securely.
           </p>
         </div>
 
@@ -143,6 +213,31 @@ export default function History() {
           </button>
         </div>
       </div>
+
+      {/* MongoDB Status Banner (Displayed when MongoDB is unavailable) */}
+      {!dbStatus.isConnected && (
+        <div className="p-4 rounded-2xl bg-[#FFF8F5] border border-[#F97316]/30 text-xs flex items-center justify-between gap-3 shadow-soft">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-[#F97316]/10 text-[#F97316] flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-bold text-[#0A0A0A]">
+                MongoDB is currently unavailable
+              </p>
+              <p className="text-[#555555] text-[11px] mt-0.5">
+                Displaying persistent local storage records. Inferences are saved safely to disk. Connect a live MongoDB cluster for cloud persistence.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={fetchHistory}
+            className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#F0ECE8] border border-[#E8E4E1] text-[#0A0A0A] font-bold text-[11px] shrink-0 transition-colors cursor-pointer"
+          >
+            Re-check DB
+          </button>
+        </div>
+      )}
 
       {/* Filter & Search Bar */}
       <div className="editorial-card p-4 rounded-2xl flex flex-wrap items-center justify-between gap-4">
@@ -203,8 +298,8 @@ export default function History() {
         </div>
       </div>
 
-      {/* Error Alert */}
-      {error && (
+      {/* Error Alert (only if not an expected db offline state) */}
+      {error && !dbStatus.isConnected && predictions.length === 0 && (
         <div className="p-4 rounded-2xl bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626] text-xs flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -212,7 +307,7 @@ export default function History() {
           </div>
           <button
             onClick={fetchHistory}
-            className="px-3 py-1 rounded-lg bg-[#DC2626] text-white font-bold hover:bg-[#B91C1C] transition-colors"
+            className="px-3 py-1 rounded-lg bg-[#DC2626] text-white font-bold hover:bg-[#B91C1C] transition-colors cursor-pointer"
           >
             Retry
           </button>
@@ -250,13 +345,17 @@ export default function History() {
                       {p.model_name ? p.model_name.split('/').pop() : 'RoBERTa'}
                     </td>
                     <td className="py-3.5 px-4 font-mono text-[#888888] text-[11px]">
-                      {p.created_at ? new Date(p.created_at).toLocaleString() : 'N/A'}
+                      {p.created_at
+                        ? new Date(p.created_at).toLocaleString()
+                        : p.timestamp
+                        ? new Date(p.timestamp).toLocaleString()
+                        : 'N/A'}
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => setInspectItem(p)}
-                          className="p-1.5 rounded-lg bg-[#FFF8F5] hover:bg-[#7C3AED] text-[#555555] hover:text-white border border-[#E8E4E1] transition-colors"
+                          className="p-1.5 rounded-lg bg-[#FFF8F5] hover:bg-[#7C3AED] text-[#555555] hover:text-white border border-[#E8E4E1] transition-colors cursor-pointer"
                           title="Inspect Details"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -264,7 +363,7 @@ export default function History() {
                         <button
                           onClick={() => handleDelete(p.id)}
                           disabled={deletingId === p.id}
-                          className="p-1.5 rounded-lg bg-[#FFF8F5] hover:bg-[#DC2626] text-[#555555] hover:text-white border border-[#E8E4E1] transition-colors"
+                          className="p-1.5 rounded-lg bg-[#FFF8F5] hover:bg-[#DC2626] text-[#555555] hover:text-white border border-[#E8E4E1] transition-colors cursor-pointer"
                           title="Delete Record"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -276,7 +375,13 @@ export default function History() {
               ) : (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-[#888888] text-xs">
-                    {loading ? 'Fetching audit records from MongoDB...' : error ? 'Error loading history records.' : 'No historical predictions found.'}
+                    {loading
+                      ? 'Fetching audit records...'
+                      : !dbStatus.isConnected
+                      ? 'MongoDB is currently unavailable and no predictions have been recorded yet. Perform an analysis on the Analyze page to see records appear here.'
+                      : error
+                      ? 'Error loading history records.'
+                      : 'No historical predictions found.'}
                   </td>
                 </tr>
               )}
@@ -294,7 +399,7 @@ export default function History() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="p-1.5 rounded-lg bg-white hover:bg-[#F0ECE8] border border-[#E8E4E1] disabled:opacity-40 disabled:cursor-not-allowed text-[#0A0A0A] transition-colors"
+              className="p-1.5 rounded-lg bg-white hover:bg-[#F0ECE8] border border-[#E8E4E1] disabled:opacity-40 disabled:cursor-not-allowed text-[#0A0A0A] transition-colors cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -304,7 +409,7 @@ export default function History() {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="p-1.5 rounded-lg bg-white hover:bg-[#F0ECE8] border border-[#E8E4E1] disabled:opacity-40 disabled:cursor-not-allowed text-[#0A0A0A] transition-colors"
+              className="p-1.5 rounded-lg bg-white hover:bg-[#F0ECE8] border border-[#E8E4E1] disabled:opacity-40 disabled:cursor-not-allowed text-[#0A0A0A] transition-colors cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -323,7 +428,7 @@ export default function History() {
               </h3>
               <button
                 onClick={() => setInspectItem(null)}
-                className="p-1.5 rounded-full hover:bg-[#FFF8F5] text-[#555555]"
+                className="p-1.5 rounded-full hover:bg-[#FFF8F5] text-[#555555] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -343,7 +448,10 @@ export default function History() {
                 <div className="p-3.5 rounded-2xl bg-[#FFF8F5] border border-[#E8E4E1] space-y-1">
                   <span className="text-[11px] text-[#555555] uppercase font-bold">Sentiment</span>
                   <div>
-                    <SentimentBadge sentiment={inspectItem.sentiment} confidence={inspectItem.confidence} />
+                    <SentimentBadge
+                      sentiment={inspectItem.sentiment}
+                      confidence={inspectItem.confidence}
+                    />
                   </div>
                 </div>
                 <div className="p-3.5 rounded-2xl bg-[#FFF8F5] border border-[#E8E4E1] space-y-1">

@@ -69,27 +69,58 @@ class SentimentIntelligencePipeline:
         """
         Complete end-to-end analysis for a single text.
         Executes Sentiment -> ABSA -> XAI, followed by Emotion detection.
+        Guarantees that a failure in a sub-module (e.g. XAI or ABSA) never breaks the response.
         """
         start_time = time.perf_counter()
         cleaned = clean_text(text)
+        if not cleaned:
+            cleaned = (text or "").strip() or "neutral statement"
         
         # 1. Sentiment Engine (select specific model if requested)
-        if model_name:
+        sent_engine = None
+        try:
+            if model_name:
+                from ml.models.sentiment_model import SentimentTransformerEngine
+                sent_engine = SentimentTransformerEngine.get_instance(model_name)
+            else:
+                sent_engine = self.sentiment_engine
+            sent_res = sent_engine.predict_single(cleaned)
+        except Exception as e:
+            logger.warning(f"Sentiment engine failure ({e}), falling back to default sentiment engine.")
             from ml.models.sentiment_model import SentimentTransformerEngine
-            sent_engine = SentimentTransformerEngine.get_instance(model_name)
-        else:
-            sent_engine = self.sentiment_engine
-
-        sent_res = sent_engine.predict_single(cleaned)
+            sent_engine = SentimentTransformerEngine.get_instance()
+            sent_res = sent_engine.predict_single(cleaned)
         
         # 2. ABSA Engine (uses sentiment engine)
-        aspects = self.absa_engine.analyze_aspects(cleaned, sent_engine)
+        try:
+            aspects = self.absa_engine.analyze_aspects(cleaned, sent_engine)
+        except Exception as e:
+            logger.warning(f"ABSA error caught in pipeline ({e})")
+            aspects = [{
+                "aspect": "Overall Experience",
+                "sentiment": sent_res["sentiment"],
+                "confidence": sent_res["confidence"],
+                "supporting_span": cleaned[:150]
+            }]
         
         # 3. Explainable AI (uses sentiment engine)
-        explanation = self.xai_engine.explain(cleaned, sent_engine) if include_xai else None
+        explanation = None
+        if include_xai:
+            try:
+                explanation = self.xai_engine.explain(cleaned, sent_engine)
+            except Exception as e:
+                logger.warning(f"XAI error caught in pipeline ({e})")
+                explanation = None
         
         # 4. Emotion Engine
-        emotion_res = self.emotion_engine.predict_single(cleaned)
+        try:
+            if self.emotion_engine is not None:
+                emotion_res = self.emotion_engine.predict_single(cleaned)
+            else:
+                emotion_res = {"emotion": "Neutral", "confidence": 0.5, "probabilities": {}}
+        except Exception as e:
+            logger.warning(f"Emotion error caught in pipeline ({e})")
+            emotion_res = {"emotion": "Neutral", "confidence": 0.5, "probabilities": {}}
         
         total_time_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
         cleanup_memory()
@@ -101,10 +132,10 @@ class SentimentIntelligencePipeline:
             "confidence": sent_res["confidence"],
             "probabilities": sent_res["probabilities"],
             "emotion": emotion_res["emotion"],
-            "emotion_probabilities": emotion_res["probabilities"],
+            "emotion_probabilities": emotion_res.get("probabilities"),
             "aspects": aspects,
             "explanation": explanation,
-            "model_name": sent_engine.model_name,
+            "model_name": getattr(sent_engine, "model_name", "cardiffnlp/twitter-roberta-base-sentiment-latest"),
             "processing_time_ms": total_time_ms
         }
 
@@ -112,7 +143,10 @@ class SentimentIntelligencePipeline:
         """
         Batched inference for bulk CSV / array processing with batch tokenizer.
         """
-        cleaned_texts = [clean_text(t) for t in texts]
+        if not texts:
+            return []
+
+        cleaned_texts = [clean_text(t) or (t or "").strip() or "neutral" for t in texts]
         
         if model_name:
             from ml.models.sentiment_model import SentimentTransformerEngine
@@ -122,15 +156,23 @@ class SentimentIntelligencePipeline:
         
         # True batched tensor execution
         sent_batch = sent_engine.predict_batch(cleaned_texts)
-        emotion_batch = self.emotion_engine.predict_batch(cleaned_texts)
-        
+        try:
+            emotion_batch = self.emotion_engine.predict_batch(cleaned_texts) if self.emotion_engine else []
+        except Exception:
+            emotion_batch = []
+            
         results = []
         for i in range(len(texts)):
-            s_item = sent_batch[i]
-            e_item = emotion_batch[i]
+            s_item = sent_batch[i] if i < len(sent_batch) else {
+                "sentiment": "Neutral", "confidence": 0.5, "probabilities": {"Positive": 0.33, "Neutral": 0.34, "Negative": 0.33}, "model_name": sent_engine.model_name
+            }
+            e_item = emotion_batch[i] if i < len(emotion_batch) else {"emotion": "Neutral"}
             
             # Quick aspect extraction for batch
-            aspects = self.absa_engine.analyze_aspects(cleaned_texts[i], sent_engine)
+            try:
+                aspects = self.absa_engine.analyze_aspects(cleaned_texts[i], sent_engine)
+            except Exception:
+                aspects = []
             
             results.append({
                 "text": texts[i],

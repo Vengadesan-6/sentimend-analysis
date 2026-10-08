@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from datetime import datetime
 from backend.app.schemas import APIResponse
 from backend.app.database import db_instance
+from backend.app.storage import get_storage_stats
 
 logger = logging.getLogger("SentixAnalytics")
 router = APIRouter()
@@ -10,26 +11,16 @@ router = APIRouter()
 @router.get("/analytics/overview", response_model=APIResponse[dict])
 async def get_analytics_overview():
     """
-    Computes overall KPI statistics directly from MongoDB, with graceful stateless fallback.
+    Computes overall KPI statistics directly from MongoDB, with graceful fallback to local persistence.
     """
-    default_overview = {
-        "total_analyses": 0,
-        "positive_count": 0,
-        "negative_count": 0,
-        "neutral_count": 0,
-        "avg_confidence": 0.0,
-        "positive_percentage": 0,
-        "negative_percentage": 0,
-        "neutral_percentage": 0,
-    }
-
     try:
         db = db_instance.db
-        if db is None:
+        if db is None or not db_instance.is_connected:
+            stats = get_storage_stats()
             return APIResponse(
                 success=True,
-                data=default_overview,
-                message="Operating in stateless mode (no database connected)"
+                data=stats,
+                message="Analytics overview computed from persistent local storage"
             )
 
         total = await db["predictions"].count_documents({})
@@ -58,11 +49,11 @@ async def get_analytics_overview():
             message="Analytics overview computed"
         )
     except Exception as e:
-        logger.warning(f"Analytics overview falling back to stateless: {e}")
+        logger.warning(f"Analytics overview falling back to local persistence: {e}")
         return APIResponse(
             success=True,
-            data=default_overview,
-            message=f"Stateless mode active ({str(e)})"
+            data=get_storage_stats(),
+            message="Analytics overview computed from persistent local storage"
         )
 
 @router.get("/analytics/sentiment", response_model=APIResponse[dict])

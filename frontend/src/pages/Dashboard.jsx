@@ -98,6 +98,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
+    const handleUpdate = () => fetchData();
+    window.addEventListener('sentix_history_updated', handleUpdate);
+    return () => window.removeEventListener('sentix_history_updated', handleUpdate);
   }, []);
 
   // Format sentiment pie data

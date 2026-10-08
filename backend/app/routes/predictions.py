@@ -1,10 +1,16 @@
+import logging
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
-from bson import ObjectId
-from backend.app.schemas import APIResponse, PredictionResponseData
-from backend.app.database import db_instance
+from typing import Optional, List, Dict, Any
+from backend.app.schemas import APIResponse
+from backend.app.database import (
+    fetch_predictions,
+    fetch_prediction_by_id,
+    remove_prediction,
+    purge_all_predictions
+)
 
 router = APIRouter()
+logger = logging.getLogger("SentixPredictionsRoute")
 
 @router.get("/predictions", response_model=APIResponse[dict])
 @router.get("/history", response_model=APIResponse[dict])
@@ -18,131 +24,82 @@ async def get_predictions(
     order: str = Query(default="desc")
 ):
     """
-    Paginated, filterable, searchable, and sortable prediction history from MongoDB.
+    Paginated, filterable, searchable, and sortable prediction history.
+    Fetches directly from MongoDB if connected, or from persistent local storage if MongoDB is unavailable.
     """
-    if db_instance.db is None:
-        return APIResponse(
-            success=True,
-            data={
-                "items": [],
-                "total": 0,
-                "page": page,
-                "limit": limit,
-                "total_pages": 1
-            },
-            message="Database not initialized"
+    try:
+        items, total, is_mongo = await fetch_predictions(
+            page=page,
+            limit=limit,
+            sentiment=sentiment,
+            emotion=emotion,
+            search=search,
+            sort_by=sort_by,
+            order=order
         )
 
-    try:
-        filter_query = {}
-        if sentiment and sentiment.lower() != "all":
-            filter_query["sentiment"] = {"$regex": f"^{sentiment}$", "$options": "i"}
-        if emotion and emotion.lower() != "all":
-            filter_query["emotion"] = {"$regex": f"^{emotion}$", "$options": "i"}
-        if search:
-            filter_query["text"] = {"$regex": search, "$options": "i"}
+        total_pages = (total + limit - 1) // limit if total > 0 else 1
 
-        sort_direction = -1 if order.lower() == "desc" else 1
-        skip = (page - 1) * limit
-
-        total = await db_instance.db["predictions"].count_documents(filter_query)
-        cursor = db_instance.db["predictions"].find(filter_query).sort(sort_by, sort_direction).skip(skip).limit(limit)
-        docs = await cursor.to_list(length=limit)
-
-        results = []
-        for d in docs:
-            created_val = d.get("created_at")
-            if hasattr(created_val, "isoformat"):
-                created_str = created_val.isoformat()
-            elif created_val:
-                created_str = str(created_val)
-            else:
-                created_str = ""
-
-            results.append({
-                "id": str(d["_id"]),
-                "text": d.get("text") or "",
-                "sentiment": (d.get("sentiment") or "Neutral").capitalize(),
-                "confidence": float(d.get("confidence") or 0.0),
-                "probabilities": d.get("probabilities") or {},
-                "emotion": (d.get("emotion") or "Neutral").capitalize(),
-                "aspects": d.get("aspects") or [],
-                "explanation": d.get("explanation"),
-                "model_name": d.get("model_name") or "cardiffnlp/twitter-roberta-base-sentiment-latest",
-                "processing_time_ms": float(d.get("processing_time_ms") or 0.0),
-                "created_at": created_str
-            })
+        message = (
+            "Fetched predictions from MongoDB cluster successfully"
+            if is_mongo
+            else "MongoDB is currently unavailable. Displaying persistent local audit trail."
+        )
 
         return APIResponse(
             success=True,
             data={
-                "items": results,
+                "items": items,
                 "total": total,
                 "page": page,
                 "limit": limit,
-                "total_pages": (total + limit - 1) // limit if total > 0 else 1
+                "total_pages": total_pages,
+                "mongodb_connected": is_mongo,
+                "database_status": "connected" if is_mongo else "offline"
             },
-            message="Fetched predictions successfully"
+            message=message
         )
     except Exception as e:
+        logger.error(f"Error serving prediction history: {e}", exc_info=True)
         return APIResponse(
-            success=True,
+            success=False,
             data={
                 "items": [],
                 "total": 0,
                 "page": page,
                 "limit": limit,
-                "total_pages": 1
+                "total_pages": 1,
+                "mongodb_connected": False,
+                "database_status": "offline"
             },
-            message=f"Database query error: {str(e)}"
+            message=f"Failed to query prediction history: {str(e)}"
         )
 
 @router.get("/predictions/{pred_id}", response_model=APIResponse[dict])
 @router.get("/history/{pred_id}", response_model=APIResponse[dict])
 async def get_prediction_by_id(pred_id: str):
     """
-    Fetch single prediction details.
+    Fetch single prediction details from MongoDB or local persistence.
     """
-    if db_instance.db is None:
-        raise HTTPException(status_code=503, detail="Database not available in stateless mode")
-
-    try:
-        obj_id = ObjectId(pred_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid prediction ID format")
-
-    doc = await db_instance.db["predictions"].find_one({"_id": obj_id})
+    doc, is_mongo = await fetch_prediction_by_id(pred_id)
     if not doc:
-        raise HTTPException(status_code=404, detail="Prediction record not found")
-
-    doc["id"] = str(doc["_id"])
-    del doc["_id"]
-    if hasattr(doc.get("created_at"), "isoformat"):
-        doc["created_at"] = doc["created_at"].isoformat()
+        raise HTTPException(status_code=404, detail="Prediction record not found.")
 
     return APIResponse(
         success=True,
         data=doc,
-        message="Fetched prediction detail"
+        message="Fetched prediction detail" if is_mongo else "Fetched prediction detail from persistent local storage"
     )
 
 @router.delete("/predictions/{pred_id}", response_model=APIResponse[dict])
 @router.delete("/history/{pred_id}", response_model=APIResponse[dict])
 async def delete_prediction(pred_id: str):
     """
-    Delete a single prediction record by ID.
+    Delete a single prediction record by ID from both MongoDB and local storage.
     """
-    if db_instance.db is None:
-        raise HTTPException(status_code=503, detail="Database not available in stateless mode")
-
-    try:
-        obj_id = ObjectId(pred_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid prediction ID format")
-
-    res = await db_instance.db["predictions"].delete_one({"_id": obj_id})
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Prediction record not found")
+    deleted, is_mongo = await remove_prediction(pred_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Prediction record not found or already deleted.")
 
     return APIResponse(
         success=True,
@@ -154,14 +111,11 @@ async def delete_prediction(pred_id: str):
 @router.delete("/history", response_model=APIResponse[dict])
 async def clear_all_predictions():
     """
-    Clear all prediction records from MongoDB.
+    Clear all prediction records from both MongoDB and local persistence.
     """
-    if db_instance.db is None:
-        raise HTTPException(status_code=503, detail="Database not available in stateless mode")
-
-    res = await db_instance.db["predictions"].delete_many({})
+    count, is_mongo = await purge_all_predictions()
     return APIResponse(
         success=True,
-        data={"deleted_count": res.deleted_count},
-        message=f"Cleared {res.deleted_count} prediction records successfully"
+        data={"deleted_count": count},
+        message=f"Cleared {count} prediction records successfully"
     )

@@ -45,52 +45,69 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS Configuration
+# Custom Middleware (Added first so CORSMiddleware wraps it)
+app.add_middleware(LoggingAndTimingMiddleware)
+
+# CORS Configuration (Added last so it wraps the entire middleware stack, guaranteeing CORS on all responses)
 cors_origins = settings.get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins if cors_origins else ["https://sentimend-analysis.vercel.app"],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.vercel\.app$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.vercel\.app$|^https://.*\.onrender\.com$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 
-# Custom Middleware
-app.add_middleware(LoggingAndTimingMiddleware)
-
 # Custom Exception Handlers
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    origin = request.headers.get("origin", "*")
     return JSONResponse(
         status_code=422,
         content={
             "success": False,
             "message": "Input validation error",
             "errors": exc.errors()
+        },
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true"
         }
     )
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global unhandled error: {exc}", exc_info=True)
+    origin = request.headers.get("origin", "*")
     return JSONResponse(
         status_code=500,
         content={
             "success": False,
             "message": f"Server error: {str(exc)}"
+        },
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true"
         }
     )
 
-# Include Routers
+# Include Routers (Both with /api prefix and without to eliminate 404 / 405 endpoint mismatches)
 app.include_router(health.router, prefix=settings.API_PREFIX, tags=["Health"])
 app.include_router(health.router, tags=["Health"])
+
 app.include_router(predict.router, prefix=settings.API_PREFIX, tags=["Inference"])
 app.include_router(predict.router, tags=["Inference"])
+
 app.include_router(predictions.router, prefix=settings.API_PREFIX, tags=["Predictions"])
+app.include_router(predictions.router, tags=["Predictions"])
+
 app.include_router(analytics.router, prefix=settings.API_PREFIX, tags=["Analytics"])
+app.include_router(analytics.router, tags=["Analytics"])
+
 app.include_router(models.router, prefix=settings.API_PREFIX, tags=["Model Performance"])
+app.include_router(models.router, tags=["Model Performance"])
 
 @app.get("/")
 async def root():
